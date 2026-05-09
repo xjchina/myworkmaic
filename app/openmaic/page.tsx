@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useDeferredValue } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
+  ArrowLeft,
   ArrowUp,
   Check,
   ChevronDown,
@@ -20,7 +21,6 @@ import {
   BotOff,
   ChevronUp,
   Upload,
-  Sparkles,
   Atom,
   X,
 } from 'lucide-react';
@@ -80,6 +80,8 @@ function HomePage() {
   const { t } = useI18n();
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const [embeddedMode, setEmbeddedMode] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
   const [form, setForm] = useState<FormState>(initialFormState);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] = useState<
@@ -101,6 +103,21 @@ function HomePage() {
       /* ignore */
     }
   };
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Embedded mode must be detected on client after mount to keep SSR/CSR markup consistent */
+  useEffect(() => {
+    setClientReady(true);
+    try {
+      const url = new URL(window.location.href);
+      const inIframe = window.self !== window.top;
+      const byQuery = url.searchParams.get('embedded') === '1';
+      const byHash = url.hash.includes('embedded');
+      setEmbeddedMode(inIframe || byQuery || byHash);
+    } catch {
+      setEmbeddedMode(false);
+    }
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Hydrate client-only state after mount (avoids SSR mismatch)
   /* eslint-disable react-hooks/set-state-in-effect -- Hydration from localStorage must happen in effect */
@@ -370,6 +387,18 @@ function HomePage() {
         onChange={handleFileChange}
         className="hidden"
       />
+      {clientReady && !embeddedMode && (
+        <div className="fixed top-4 left-4 z-50">
+          <Button
+            variant="outline"
+            onClick={() => router.push('/')}
+            className="gap-2 rounded-full bg-white/70 dark:bg-gray-800/70 backdrop-blur-md border-gray-200/60 dark:border-gray-700/60"
+          >
+            <ArrowLeft className="size-4" />
+            返回主页
+          </Button>
+        </div>
+      )}
       {/* ═══ Top-right pill (unchanged) ═══ */}
       <div
         ref={toolbarRef}

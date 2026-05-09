@@ -1,336 +1,310 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { nanoid } from 'nanoid';
-import { Bot, FileText, MessageSquare, Sparkles, Upload } from 'lucide-react';
-import { QuizView } from '@/components/scene-renderers/quiz-view';
-import { Button } from '@/components/ui/button';
-import { useSettingsStore } from '@/lib/store/settings';
-import { listStages, type StageListItem } from '@/lib/utils/stage-storage';
-import type { QuizQuestion } from '@/lib/types/stage';
+import Link from 'next/link';
+import { AppShell } from '@/components/shell/app-shell';
 
-const MENU_ITEMS = [
-  { key: 'openmaic', label: 'OpenMAIC 主页', icon: Bot },
-  { key: 'quiz', label: '随堂测验', icon: FileText },
-  { key: 'roundtable', label: '圆桌会议', icon: MessageSquare },
-] as const;
-
-type MenuKey = (typeof MENU_ITEMS)[number]['key'];
-
-type ParsedQuestionBlock = {
-  no: number;
-  stem: string;
-  options: Array<{ value: string; label: string }>;
-};
-
-function parseQuizFromPdfText(text: string): QuizQuestion[] {
-  const lines = text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const answers = new Map<number, string>();
-  const answerLineRe = /^(?:第\s*(\d+)\s*题|(\d{1,3}))[\.、．\)\s]*(?:答案[:：]?)?\s*([A-Ha-h]{1,6}|.+)$/;
-  let inAnswerSection = false;
-
-  const questionLines: string[] = [];
-  for (const line of lines) {
-    if (/^(参考)?答案(与解析)?[:：]?$/.test(line)) {
-      inAnswerSection = true;
-      continue;
-    }
-    if (inAnswerSection) {
-      const m = line.match(answerLineRe);
-      if (m) {
-        const qNo = Number(m[1] || m[2]);
-        const value = (m[3] || '').trim();
-        if (qNo > 0 && value) answers.set(qNo, value);
-      }
-    } else {
-      questionLines.push(line);
-    }
-  }
-
-  const questionStartRe = /^(?:第\s*(\d+)\s*题|(\d{1,3}))[\.、．\)\s]+(.+)$/;
-  const optionRe = /^([A-Ha-h])[\.、．\)\s]+(.+)$/;
-  const blocks: ParsedQuestionBlock[] = [];
-  let current: ParsedQuestionBlock | null = null;
-
-  for (const line of questionLines) {
-    const start = line.match(questionStartRe);
-    if (start) {
-      if (current) blocks.push(current);
-      const no = Number(start[1] || start[2]);
-      const rest = (start[3] || '').trim();
-      current = { no, stem: rest, options: [] };
-      continue;
-    }
-    if (!current) continue;
-
-    const opt = line.match(optionRe);
-    if (opt) {
-      current.options.push({ value: opt[1].toUpperCase(), label: opt[2].trim() });
-    } else if (current.options.length === 0) {
-      current.stem = `${current.stem} ${line}`.trim();
-    }
-  }
-  if (current) blocks.push(current);
-
-  return blocks.map((b) => {
-    const rawAnswer = answers.get(b.no)?.replace(/\s+/g, '').toUpperCase();
-    const optionAnswers = rawAnswer ? [...rawAnswer].filter((ch) => /[A-H]/.test(ch)) : [];
-    const hasOptions = b.options.length > 0;
-    const isMultiple = optionAnswers.length > 1;
-
-    return {
-      id: `q_${nanoid(8)}`,
-      type: hasOptions ? (isMultiple ? 'multiple' : 'single') : 'short_answer',
-      question: b.stem || `第 ${b.no} 题`,
-      options: hasOptions ? b.options : undefined,
-      answer: hasOptions && optionAnswers.length > 0 ? optionAnswers : undefined,
-      analysis: undefined,
-      hasAnswer: hasOptions ? optionAnswers.length > 0 : false,
-      points: 1,
-    } satisfies QuizQuestion;
-  });
-}
-
-function QuizMenuPanel() {
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);
-  const [sceneId, setSceneId] = useState<string>('quiz-menu-initial');
-  const [summary, setSummary] = useState<string | null>(null);
-
-  const handleGenerateQuiz = async () => {
-    if (!pdfFile) {
-      setError('请先上传 PDF 文件。');
-      return;
-    }
-
-    setError(null);
-    setIsGenerating(true);
-
-    try {
-      const settings = useSettingsStore.getState();
-
-      const parseFormData = new FormData();
-      parseFormData.append('pdf', pdfFile);
-      if (settings.pdfProviderId) parseFormData.append('providerId', settings.pdfProviderId);
-
-      const pdfProviderConfig = settings.pdfProvidersConfig?.[settings.pdfProviderId];
-      if (pdfProviderConfig?.apiKey?.trim()) parseFormData.append('apiKey', pdfProviderConfig.apiKey);
-      if (pdfProviderConfig?.baseUrl?.trim())
-        parseFormData.append('baseUrl', pdfProviderConfig.baseUrl);
-
-      const parseResp = await fetch('/api/parse-pdf', {
-        method: 'POST',
-        body: parseFormData,
-      });
-
-      const parseJson = await parseResp.json();
-      if (!parseResp.ok || !parseJson?.success || !parseJson?.data) {
-        throw new Error(parseJson?.error || 'PDF 解析失败');
-      }
-
-      const parsedText = String(parseJson.data.text || '').trim();
-      const extractedQuestions = parseQuizFromPdfText(parsedText);
-      if (extractedQuestions.length === 0) {
-        throw new Error('PDF 中未检测到可识别题目，不会自动补题。请确认 PDF 中有标准题号格式（如“第1题”或“1.”）。');
-      }
-
-      setQuestions(extractedQuestions);
-      setSceneId(`quiz-menu-${nanoid(8)}`);
-
-      const pageCount = parseJson.data.metadata?.pageCount;
-      const chars = parsedText.length;
-      const withAnswer = extractedQuestions.filter((q) => q.hasAnswer).length;
-      setSummary(
-        `PDF 共 ${pageCount ?? 0} 页，解析文本约 ${chars} 字，严格提取题目 ${extractedQuestions.length} 题（含答案 ${withAnswer} 题）。`,
-      );
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '生成失败');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
+export default function HomePage() {
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold">上传 PDF 生成随堂测验</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            上传讲义或教材 PDF，系统将自动解析内容并生成题目与答案。
-          </p>
-        </div>
+    <AppShell
+      activeKey="home"
+      title="欢迎回来，小明"
+      description="今天是学习的好日子，继续加油。"
+      actions={
+        <>
+          <button className="btn btn-outline" type="button">
+            数据报告
+          </button>
+          <Link className="btn btn-primary" href="/classroom">
+            快速开始
+          </Link>
+        </>
+      }
+    >
+      <div className="feature-grid">
+        <Link href="/classroom" className="feature-card">
+          <div className="feature-icon i-classroom">📘</div>
+          <div className="feature-title">教案课堂</div>
+          <div className="feature-desc">上传老师教案 PDF，AI 智能讲解授课，支持互动实验。</div>
+          <div className="feature-tags">
+            <span className="feature-tag">PDF 教案</span>
+            <span className="feature-tag">智能讲解</span>
+          </div>
+        </Link>
 
-        <label className="space-y-1.5 text-sm block">
-          <span className="font-medium">PDF 文件</span>
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
-            className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-          />
-        </label>
+        <Link href="/exercise" className="feature-card active">
+          <div className="feature-icon i-exercise">📝</div>
+          <div className="feature-title">互动练习</div>
+          <div className="feature-desc">上传练习 PDF，AI 严格按原题生成测验并批改。</div>
+          <div className="feature-tags">
+            <span className="feature-tag">PDF 练习题</span>
+            <span className="feature-tag">AI 解析</span>
+          </div>
+        </Link>
 
-        <Button onClick={handleGenerateQuiz} disabled={!pdfFile || isGenerating} className="gap-2">
-          <Upload className="size-4" />
-          {isGenerating ? '正在生成测验...' : '生成测验'}
-        </Button>
-
-        {summary && <p className="text-sm text-emerald-600 dark:text-emerald-400">{summary}</p>}
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        <Link href="/roundtable" className="feature-card">
+          <div className="feature-icon i-roundtable">💬</div>
+          <div className="feature-title">圆桌讨论</div>
+          <div className="feature-desc">围绕学生提问发起讨论，老师与 AI 学生多视角协作推理。</div>
+          <div className="feature-tags">
+            <span className="feature-tag">同学互助</span>
+            <span className="feature-tag">讨论学习</span>
+          </div>
+        </Link>
       </div>
 
-      {questions && questions.length > 0 && (
-        <div className="rounded-2xl border border-border/60 bg-card p-2 h-[70vh] min-h-[560px]">
-          <QuizView questions={questions} sceneId={sceneId} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RoundtableMenuPanel() {
-  const router = useRouter();
-  const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
-  const [selectedClassroomId, setSelectedClassroomId] = useState<string>('');
-  const [question, setQuestion] = useState('');
-
-  useEffect(() => {
-    const loadClassrooms = async () => {
-      const list = await listStages();
-      setClassrooms(list);
-      if (list.length > 0) {
-        setSelectedClassroomId((prev) => prev || list[0].id);
-      }
-    };
-
-    loadClassrooms().catch(() => setClassrooms([]));
-  }, []);
-
-  const canStart = useMemo(
-    () => !!selectedClassroomId && question.trim().length > 0,
-    [selectedClassroomId, question],
-  );
-
-  const startDiscussion = () => {
-    if (!canStart) return;
-
-    const payload = {
-      stageId: selectedClassroomId,
-      question: question.trim(),
-      createdAt: Date.now(),
-    };
-    sessionStorage.setItem('pendingRoundtableQuestion', JSON.stringify(payload));
-    router.push(`/classroom/${selectedClassroomId}?autodiscuss=1`);
-  };
-
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold">圆桌会议入口</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          在这里发起 AI 老师与 AI 学生讨论。输入学生问题后会进入课堂并自动开始讨论。
-        </p>
-      </div>
-
-      <label className="space-y-1.5 text-sm block">
-        <span className="font-medium">选择互动课堂</span>
-        <select
-          value={selectedClassroomId}
-          onChange={(e) => setSelectedClassroomId(e.target.value)}
-          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-        >
-          {classrooms.length === 0 && <option value="">暂无课堂</option>}
-          {classrooms.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="space-y-1.5 text-sm block">
-        <span className="font-medium">学生提问</span>
-        <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="例如：老师，我不理解这个公式为什么这样推导？"
-          rows={4}
-          className="block w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-        />
-      </label>
-
-      <Button onClick={startDiscussion} disabled={!canStart} className="gap-2">
-        <Sparkles className="size-4" />
-        开始讨论
-      </Button>
-    </div>
-  );
-}
-
-function OpenMAICMenuPanel() {
-  const router = useRouter();
-
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card p-6 text-center space-y-4">
-      <h2 className="text-xl font-semibold">OpenMAIC 互动课堂生成</h2>
-      <p className="text-sm text-muted-foreground max-w-2xl mx-auto">
-        进入原始 OpenMAIC 主页，上传资料并生成互动课堂内容。
-      </p>
-      <Button onClick={() => router.push('/openmaic')} size="lg" className="gap-2">
-        <Bot className="size-4" />
-        进入 OpenMAIC 主页
-      </Button>
-    </div>
-  );
-}
-
-export default function MenuHomePage() {
-  const [activeMenu, setActiveMenu] = useState<MenuKey>('openmaic');
-
-  return (
-    <div className="min-h-[100dvh] bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 px-4 py-8 md:px-8">
-      <div className="mx-auto w-full max-w-6xl space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight">OpenMAIC 教学工作台</h1>
-          <p className="text-muted-foreground">三个菜单：课堂生成、随堂测验、圆桌会议。</p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {MENU_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeMenu === item.key;
-            return (
-              <button
-                key={item.key}
-                onClick={() => setActiveMenu(item.key)}
-                className={`rounded-xl border px-4 py-3 text-left transition-all ${
-                  isActive
-                    ? 'border-primary bg-primary/10 shadow-sm'
-                    : 'border-border/60 bg-card hover:border-primary/40 hover:bg-card/90'
-                }`}
-              >
-                <div className="flex items-center gap-2 font-medium">
-                  <Icon className="size-4" />
-                  {item.label}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div>
-          {activeMenu === 'openmaic' && <OpenMAICMenuPanel />}
-          {activeMenu === 'quiz' && <QuizMenuPanel />}
-          {activeMenu === 'roundtable' && <RoundtableMenuPanel />}
+      <div className="quick-section">
+        <div className="quick-title">快捷工具</div>
+        <div className="quick-grid">
+          <Link href="/pdf-tools" className="quick-item">
+            <div className="quick-icon q1">📄</div>
+            <div className="quick-label">Word 转 PDF</div>
+          </Link>
+          <Link href="/knowledge-select" className="quick-item">
+            <div className="quick-icon q2">🌌</div>
+            <div className="quick-label">知识宇宙</div>
+          </Link>
+          <Link href="/knowledge-tree" className="quick-item">
+            <div className="quick-icon q3">🌳</div>
+            <div className="quick-label">知识树</div>
+          </Link>
         </div>
       </div>
-    </div>
+
+      <div className="stats-section">
+        <div className="stat-card">
+          <div className="stat-icon s1">📘</div>
+          <div className="stat-value">3</div>
+          <div className="stat-label">已完成教案</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon s2">📝</div>
+          <div className="stat-value">24</div>
+          <div className="stat-label">练习题数</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon s3">💬</div>
+          <div className="stat-value">8</div>
+          <div className="stat-label">讨论话题</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon s4">🔥</div>
+          <div className="stat-value">7</div>
+          <div className="stat-label">连续学习(天)</div>
+        </div>
+      </div>
+
+      <style jsx>{`
+        .btn {
+          padding: 10px 20px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 500;
+          border: none;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          text-decoration: none;
+          cursor: pointer;
+        }
+        .btn-primary {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+        }
+        .btn-outline {
+          background: white;
+          color: #4a5568;
+          border: 2px solid #e2e8f0;
+        }
+        .feature-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 24px;
+          margin-bottom: 32px;
+        }
+        .feature-card {
+          background: white;
+          border-radius: 20px;
+          padding: 28px;
+          transition: all 0.3s ease;
+          cursor: pointer;
+          border: 2px solid transparent;
+          text-decoration: none;
+          color: inherit;
+        }
+        .feature-card:hover {
+          transform: translateY(-5px);
+          box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
+        }
+        .feature-card.active {
+          border-color: #667eea;
+        }
+        .feature-icon {
+          width: 64px;
+          height: 64px;
+          border-radius: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 32px;
+          margin-bottom: 20px;
+          color: white;
+        }
+        .i-classroom {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .i-exercise {
+          background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+        }
+        .i-roundtable {
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .feature-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #1a365d;
+          margin-bottom: 8px;
+        }
+        .feature-desc {
+          font-size: 14px;
+          color: #718096;
+          line-height: 1.5;
+        }
+        .feature-tags {
+          display: flex;
+          gap: 8px;
+          margin-top: 16px;
+          flex-wrap: wrap;
+        }
+        .feature-tag {
+          background: #f7fafc;
+          padding: 4px 12px;
+          border-radius: 8px;
+          font-size: 12px;
+          color: #4a5568;
+        }
+        .quick-section {
+          background: white;
+          border-radius: 20px;
+          padding: 28px;
+        }
+        .quick-title {
+          font-size: 18px;
+          font-weight: 600;
+          color: #1a365d;
+          margin-bottom: 20px;
+        }
+        .quick-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 16px;
+        }
+        .quick-item {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          padding: 20px;
+          background: #f7fafc;
+          border-radius: 16px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-decoration: none;
+          color: inherit;
+          border: none;
+        }
+        .quick-item:hover {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          transform: translateY(-3px);
+        }
+        .quick-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+        }
+        .q1 {
+          background: #dbeafe;
+        }
+        .q2 {
+          background: #dcfce7;
+        }
+        .q3 {
+          background: #fef3c7;
+        }
+        .quick-label {
+          font-size: 13px;
+          font-weight: 500;
+          text-align: center;
+        }
+        .stats-section {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 20px;
+          margin-top: 32px;
+        }
+        .stat-card {
+          background: white;
+          border-radius: 16px;
+          padding: 24px;
+        }
+        .stat-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 24px;
+          margin-bottom: 16px;
+          color: white;
+        }
+        .s1 {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .s2 {
+          background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+        }
+        .s3 {
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        }
+        .s4 {
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .stat-value {
+          font-size: 28px;
+          font-weight: 700;
+          color: #1a365d;
+        }
+        .stat-label {
+          color: #718096;
+          font-size: 14px;
+          margin-top: 4px;
+        }
+        @media (max-width: 1200px) {
+          .feature-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .quick-grid {
+            grid-template-columns: repeat(2, 1fr);
+          }
+          .stats-section {
+            grid-template-columns: repeat(2, 1fr);
+          }
+        }
+        @media (max-width: 768px) {
+          .feature-grid {
+            grid-template-columns: 1fr;
+          }
+          .quick-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </AppShell>
   );
 }
+

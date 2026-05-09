@@ -39,6 +39,31 @@ const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
 
+const QUIZ_FORBIDDEN_RULE =
+  '互动课堂中禁止出现随堂测验、quiz题目、测验环节或任何题目作答页面。';
+
+const PDF_STRICT_RULES = [
+  '请你完全按照这个PDF讲义来生成课堂，不允许发散。',
+  '严格按照讲义里面的内容生成，不允许补充讲义外的新知识点。',
+  '课堂内容只能围绕PDF中已有信息进行组织与讲解。',
+].join('');
+
+function buildRequirementWithHardRules(requirement: string, hasPdf: boolean): string {
+  const hardRules = hasPdf
+    ? `【课堂生成硬性约束】${PDF_STRICT_RULES}${QUIZ_FORBIDDEN_RULE}`
+    : `【课堂生成硬性约束】${QUIZ_FORBIDDEN_RULE}`;
+  return `${requirement}\n\n${hardRules}`;
+}
+
+function normalizeOutlinesNoQuiz(outlines: SceneOutline[]): SceneOutline[] {
+  return outlines
+    .filter((outline) => outline.type !== 'quiz')
+    .map((outline, index) => ({
+      ...outline,
+      order: index + 1,
+    }));
+}
+
 /**
  * Extract the languageDirective from the streamed wrapper JSON.
  * Matches `"languageDirective":"<value>"` in partial JSON like:
@@ -154,6 +179,10 @@ export async function POST(req: NextRequest) {
       agents?: AgentInfo[];
     };
     requirementSnippet = requirements?.requirement?.substring(0, 60);
+    const requirementForGeneration = buildRequirementWithHardRules(
+      requirements.requirement,
+      !!pdfText?.trim(),
+    );
 
     // Build user profile string for language inference context
     const userProfileText =
@@ -210,7 +239,7 @@ export async function POST(req: NextRequest) {
       : PROMPT_IDS.REQUIREMENTS_TO_OUTLINES;
 
     const prompts = buildPrompt(promptId, {
-      requirement: requirements.requirement,
+      requirement: requirementForGeneration,
       pdfContent: pdfText ? pdfText.substring(0, MAX_PDF_CONTENT_CHARS) : 'None',
       availableImages: availableImagesText,
       researchContext: researchContext || 'None',
@@ -227,7 +256,7 @@ export async function POST(req: NextRequest) {
     }
 
     log.info(
-      `Generating outlines: "${requirements.requirement.substring(0, 50)}" [model=${modelString}]`,
+      `Generating outlines: "${requirementForGeneration.substring(0, 50)}" [model=${modelString}]`,
     );
 
     // Create SSE stream with heartbeat to prevent connection timeout
@@ -367,11 +396,7 @@ export async function POST(req: NextRequest) {
           if (parsedOutlines.length > 0) {
             // Replace sequential gen_img_N/gen_vid_N with globally unique IDs
             const uniquifiedOutlines = uniquifyMediaElementIds(parsedOutlines);
-            const finalOutlines = interactiveMode
-              ? uniquifiedOutlines
-                  .filter((outline) => outline.type !== 'quiz')
-                  .map((outline, index) => ({ ...outline, order: index + 1 }))
-              : uniquifiedOutlines;
+            const finalOutlines = normalizeOutlinesNoQuiz(uniquifiedOutlines);
             // Send done event with all outlines
             const doneEvent = JSON.stringify({
               type: 'done',

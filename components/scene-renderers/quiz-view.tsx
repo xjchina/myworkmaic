@@ -26,9 +26,11 @@ import { gradeChoiceQuestions, isShortAnswer, type QuestionResult } from '@/lib/
 import {
   clearSubmitted,
   draftKey,
+  writeQuizQuestions,
   readSubmittedState,
   writeSubmittedAnswers,
   writeSubmittedResults,
+  writeMistakeNotebookEntriesForScene,
   type SubmittedState,
 } from '@/lib/quiz/persistence';
 
@@ -726,6 +728,10 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
     initialSubmitted?.kind === 'reviewing' ? initialSubmitted.results : [],
   );
 
+  useEffect(() => {
+    writeQuizQuestions(sceneId, questions);
+  }, [sceneId, questions]);
+
   // Draft cache for quiz answers, keyed by sceneId to isolate across classrooms
   const {
     cachedValue: cachedAnswers,
@@ -810,6 +816,7 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
       setResults(ordered);
       setPhase('reviewing');
       writeSubmittedResults(sceneId, ordered);
+      writeMistakeNotebookEntriesForScene(sceneId, answers, ordered);
     })();
 
     return () => {

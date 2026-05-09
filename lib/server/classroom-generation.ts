@@ -28,6 +28,7 @@ import {
   generateTTSForClassroom,
 } from '@/lib/server/classroom-media-generation';
 import type { UserRequirements } from '@/lib/types/generation';
+import type { SceneOutline } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 import { AGENT_COLOR_PALETTE, AGENT_DEFAULT_AVATARS } from '@/lib/constants/agent-defaults';
 
@@ -70,6 +71,50 @@ export interface GenerateClassroomResult {
   scenes: Scene[];
   scenesCount: number;
   createdAt: string;
+}
+
+const QUIZ_FORBIDDEN_RULE =
+  '互动课堂中禁止出现随堂测验、quiz题目、测验环节或任何题目作答页面。';
+
+const PDF_STRICT_RULES = [
+  '请你完全按照上传的 PDF 讲义内容生成课堂。',
+  '不允许发散，不允许补充讲义外的新知识点、结论、例题或术语。',
+  '课堂内容只能使用 PDF 中已经出现的信息进行讲解与组织。',
+].join('');
+
+function buildRequirementWithHardRules(requirement: string, hasPdf: boolean): string {
+  const hardRules = hasPdf
+    ? `【课堂生成硬性约束】${PDF_STRICT_RULES}${QUIZ_FORBIDDEN_RULE}`
+    : `【课堂生成硬性约束】${QUIZ_FORBIDDEN_RULE}`;
+  return `${requirement}\n\n${hardRules}`;
+}
+
+function normalizeOutlinesForInteractiveClassroom(outlines: SceneOutline[]) {
+  let convertedQuizCount = 0;
+  const normalized: SceneOutline[] = outlines.map((outline) => {
+    if (outline.type !== 'quiz') return outline;
+    convertedQuizCount += 1;
+    return {
+      ...outline,
+      type: 'slide' as const,
+      title:
+        typeof outline.title === 'string' && outline.title.trim().length > 0
+          ? `${outline.title}（讲解）`
+          : '讲解场景',
+      description:
+        typeof outline.description === 'string' && outline.description.trim().length > 0
+          ? `${outline.description}（已按规则移除测验，改为讲解巩固）`
+          : '已按规则移除测验，改为讲解巩固。',
+    };
+  });
+
+  // Reindex order to avoid holes after any transformation.
+  const withOrder: SceneOutline[] = normalized.map((outline, index) => ({
+    ...outline,
+    order: index + 1,
+  }));
+
+  return { outlines: withOrder, convertedQuizCount };
 }
 
 function createInMemoryStore(stage: Stage): StageStore {
@@ -167,6 +212,10 @@ export async function generateClassroom(
   },
 ): Promise<GenerateClassroomResult> {
   const { requirement, pdfContent } = input;
+  const requirementForGeneration = buildRequirementWithHardRules(
+    requirement,
+    !!pdfContent?.text?.trim(),
+  );
 
   await options.onProgress?.({
     step: 'initializing',
@@ -223,7 +272,7 @@ export async function generateClassroom(
   };
 
   const requirements: UserRequirements = {
-    requirement,
+    requirement: requirementForGeneration,
   };
   const pdfText = pdfContent?.text || undefined;
 
@@ -240,7 +289,11 @@ export async function generateClassroom(
     const webSearchConfig = resolveClassroomWebSearchConfig(input);
     if (webSearchConfig) {
       try {
-        const searchQuery = await buildSearchQuery(requirement, pdfText, searchQueryAiCall);
+        const searchQuery = await buildSearchQuery(
+          requirementForGeneration,
+          pdfText,
+          searchQueryAiCall,
+        );
 
         log.info('Running web search for classroom generation', {
           hasPdfContext: searchQuery.hasPdfContext,
@@ -294,14 +347,23 @@ export async function generateClassroom(
   }
 
   const { languageDirective, outlines } = outlinesResult.data;
-  log.info(`Generated ${outlines.length} scene outlines (languageDirective: ${languageDirective})`);
+  const { outlines: normalizedOutlines, convertedQuizCount } =
+    normalizeOutlinesForInteractiveClassroom(outlines);
+  if (convertedQuizCount > 0) {
+    log.warn(
+      `Converted ${convertedQuizCount} quiz outlines to slide outlines to enforce no-quiz policy`,
+    );
+  }
+  log.info(
+    `Generated ${normalizedOutlines.length} scene outlines (languageDirective: ${languageDirective})`,
+  );
 
   await options.onProgress?.({
     step: 'generating_outlines',
     progress: 30,
-    message: `Generated ${outlines.length} scene outlines`,
+    message: `Generated ${normalizedOutlines.length} scene outlines`,
     scenesGenerated: 0,
-    totalScenes: outlines.length,
+    totalScenes: normalizedOutlines.length,
   });
 
   // Resolve agents based on agentMode — now AFTER outlines so we can use languageDirective
@@ -323,7 +385,7 @@ export async function generateClassroom(
   const stageId = nanoid(10);
   const stage: Stage = {
     id: stageId,
-    name: outlines[0]?.title || requirement.slice(0, 50),
+    name: normalizedOutlines[0]?.title || requirement.slice(0, 50),
     description: undefined,
     languageDirective,
     style: 'interactive',
@@ -355,16 +417,17 @@ export async function generateClassroom(
   log.info('Stage 2: Generating scene content and actions...');
   let generatedScenes = 0;
 
-  for (const [index, outline] of outlines.entries()) {
+  for (const [index, outline] of normalizedOutlines.entries()) {
     const safeOutline = applyOutlineFallbacks(outline, true);
-    const progressStart = 30 + Math.floor((index / Math.max(outlines.length, 1)) * 60);
+    const progressStart =
+      30 + Math.floor((index / Math.max(normalizedOutlines.length, 1)) * 60);
 
     await options.onProgress?.({
       step: 'generating_scenes',
       progress: Math.max(progressStart, 31),
-      message: `Generating scene ${index + 1}/${outlines.length}: ${safeOutline.title}`,
+      message: `Generating scene ${index + 1}/${normalizedOutlines.length}: ${safeOutline.title}`,
       scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
+      totalScenes: normalizedOutlines.length,
     });
 
     const content = await generateSceneContent(safeOutline, aiCall, { agents, languageDirective });
@@ -386,13 +449,14 @@ export async function generateClassroom(
     }
 
     generatedScenes += 1;
-    const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
+    const progressEnd =
+      30 + Math.floor(((index + 1) / Math.max(normalizedOutlines.length, 1)) * 60);
     await options.onProgress?.({
       step: 'generating_scenes',
       progress: Math.min(progressEnd, 90),
-      message: `Generated ${generatedScenes}/${outlines.length} scenes`,
+      message: `Generated ${generatedScenes}/${normalizedOutlines.length} scenes`,
       scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
+      totalScenes: normalizedOutlines.length,
     });
   }
 
@@ -410,11 +474,15 @@ export async function generateClassroom(
       progress: 90,
       message: 'Generating media files',
       scenesGenerated: scenes.length,
-      totalScenes: outlines.length,
+      totalScenes: normalizedOutlines.length,
     });
 
     try {
-      const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
+      const mediaMap = await generateMediaForClassroom(
+        normalizedOutlines,
+        stageId,
+        options.baseUrl,
+      );
       replaceMediaPlaceholders(scenes, mediaMap);
       log.info(`Media generation complete: ${Object.keys(mediaMap).length} files`);
     } catch (err) {
@@ -429,7 +497,7 @@ export async function generateClassroom(
       progress: 94,
       message: 'Generating TTS audio',
       scenesGenerated: scenes.length,
-      totalScenes: outlines.length,
+      totalScenes: normalizedOutlines.length,
     });
 
     try {
@@ -445,7 +513,7 @@ export async function generateClassroom(
     progress: 98,
     message: 'Persisting classroom data',
     scenesGenerated: scenes.length,
-    totalScenes: outlines.length,
+    totalScenes: normalizedOutlines.length,
   });
 
   const persisted = await persistClassroom(
@@ -464,7 +532,7 @@ export async function generateClassroom(
     progress: 100,
     message: 'Classroom generation completed',
     scenesGenerated: scenes.length,
-    totalScenes: outlines.length,
+    totalScenes: normalizedOutlines.length,
   });
 
   return {
