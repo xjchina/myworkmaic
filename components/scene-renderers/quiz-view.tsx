@@ -200,14 +200,14 @@ function SingleChoiceQuestion({
   return (
     <QuestionCard question={question} index={index} result={result}>
       <div className="grid gap-2">
-        {question.options?.map((opt) => {
+        {question.options?.map((opt, idx) => {
           const selected = value === opt.value;
           const isCorrectOpt = isReview && question.answer?.includes(opt.value);
           const isWrong = isReview && selected && result?.status === 'incorrect';
 
           return (
             <button
-              key={opt.value}
+              key={`${question.id}-${opt.value}-${idx}`}
               disabled={disabled}
               onClick={() => !disabled && onChange(opt.value)}
               className={cn(
@@ -310,14 +310,14 @@ function MultipleChoiceQuestion({
         </p>
       )}
       <div className="grid gap-2">
-        {question.options?.map((opt) => {
+        {question.options?.map((opt, idx) => {
           const isSelected = selected.includes(opt.value);
           const isCorrectOpt = isReview && question.answer?.includes(opt.value);
           const isWrong = isReview && isSelected && !isCorrectOpt;
 
           return (
             <button
-              key={opt.value}
+              key={`${question.id}-${opt.value}-${idx}`}
               disabled={disabled}
               onClick={() => toggle(opt.value)}
               className={cn(

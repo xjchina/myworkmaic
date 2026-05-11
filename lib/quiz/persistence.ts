@@ -22,6 +22,7 @@ export const RESULTS_KEY_PREFIX = 'quizResults:';
 export const QUESTIONS_KEY_PREFIX = 'quizQuestions:';
 export const UPDATED_AT_KEY_PREFIX = 'quizUpdatedAt:';
 export const NOTEBOOK_KEY = 'mistakeNotebook:v1';
+export const QUIZ_SESSION_LIST_KEY = 'quizSessions:v1';
 
 /** Build the draft cache key for a scene. Use this everywhere that needs the
  *  in-progress quiz answers (e.g. `useDraftCache`) so the prefix stays in
@@ -38,6 +39,17 @@ export interface MistakeNotebookEntry {
   userAnswer: string;
   correctAnswer: string;
   status: 'correct' | 'incorrect';
+  updatedAt: number;
+}
+
+export interface QuizSessionRecord {
+  id: string;
+  sceneId: string;
+  sourceName: string;
+  summary: string;
+  questionCount: number;
+  questions: QuizQuestion[];
+  createdAt: number;
   updatedAt: number;
 }
 
@@ -279,4 +291,74 @@ export function clearAllForScene(sceneId: string): void {
   const store = readNotebookStore();
   const retained = store.entries.filter((item) => item.sceneId !== sceneId);
   writeNotebookStore({ entries: retained });
+}
+
+function isQuizQuestionLike(value: unknown): value is QuizQuestion {
+  if (!value || typeof value !== 'object') return false;
+  const q = value as QuizQuestion;
+  return typeof q.id === 'string' && typeof q.question === 'string' && typeof q.type === 'string';
+}
+
+function isQuizSessionRecordLike(value: unknown): value is QuizSessionRecord {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as QuizSessionRecord;
+  return (
+    typeof record.id === 'string' &&
+    typeof record.sceneId === 'string' &&
+    typeof record.sourceName === 'string' &&
+    typeof record.summary === 'string' &&
+    typeof record.questionCount === 'number' &&
+    Array.isArray(record.questions) &&
+    record.questions.every(isQuizQuestionLike) &&
+    typeof record.createdAt === 'number' &&
+    typeof record.updatedAt === 'number'
+  );
+}
+
+export function readQuizSessions(): QuizSessionRecord[] {
+  const raw = safeGet(QUIZ_SESSION_LIST_KEY);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(isQuizSessionRecordLike)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+export function saveQuizSession(
+  input: Omit<QuizSessionRecord, 'createdAt' | 'updatedAt'> & {
+    createdAt?: number;
+    updatedAt?: number;
+  },
+): QuizSessionRecord[] {
+  const now = Date.now();
+  const list = readQuizSessions();
+  const existing = list.find((item) => item.id === input.id);
+
+  const nextItem: QuizSessionRecord = {
+    id: input.id,
+    sceneId: input.sceneId,
+    sourceName: input.sourceName,
+    summary: input.summary,
+    questionCount: input.questionCount,
+    questions: input.questions,
+    createdAt: existing?.createdAt ?? input.createdAt ?? now,
+    updatedAt: input.updatedAt ?? now,
+  };
+
+  const retained = list.filter((item) => item.id !== input.id);
+  const next = [nextItem, ...retained].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 30);
+  safeSet(QUIZ_SESSION_LIST_KEY, JSON.stringify(next));
+  return next;
+}
+
+export function removeQuizSession(id: string): QuizSessionRecord[] {
+  const list = readQuizSessions();
+  const next = list.filter((item) => item.id !== id);
+  safeSet(QUIZ_SESSION_LIST_KEY, JSON.stringify(next));
+  return next;
 }

@@ -17,7 +17,7 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
   const logout = useSessionStore((s) => s.logout);
 
   const menuItems = [
-    { href: '/account', label: isLoggedIn ? '👤 账号管理' : '🔐 登录 / 注册', active: activeKey === 'account' },
+    { href: isLoggedIn ? '/account' : '/login', label: isLoggedIn ? '👤 账号管理' : '🔐 登录', active: activeKey === 'account' || activeKey === 'login' },
     { href: '/knowledge-tree', label: '🌳 知识树', active: activeKey === 'knowledge' },
     { href: '/mistakes', label: '📒 错题本', active: activeKey === 'mistakes' },
     { href: '/messages', label: '🔔 消息', active: activeKey === 'messages' },
@@ -28,7 +28,7 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
       <div className={styles.avatar}>{isLoggedIn ? (displayName?.slice(0, 1) ?? '我') : '未'}</div>
       <div className={styles.userText}>
         <div className={styles.userName}>{isLoggedIn ? displayName || '学员' : '个人中心'}</div>
-        <div className={styles.userStatus}>{isLoggedIn ? maskPhone(userPhone) : '登录 / 注册'}</div>
+        <div className={styles.userStatus}>{isLoggedIn ? maskPhone(userPhone) : '点击登录'}</div>
       </div>
       <div className={styles.userMenu}>
         {menuItems.map((item) => (

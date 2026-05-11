@@ -2,8 +2,11 @@
 
 import { AppShell } from '@/components/shell/app-shell';
 import Link from 'next/link';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 export default function KnowledgeTreePage() {
+  const { isLoggedIn } = useAuthGuard();
+  if (!isLoggedIn) return null;
   return (
     <AppShell
       activeKey="knowledge"

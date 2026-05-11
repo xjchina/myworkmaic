@@ -1,9 +1,67 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
+import { listStages } from '@/lib/utils/stage-storage';
+import { readQuizSessions } from '@/lib/quiz/persistence';
+
+const ROUNDTABLE_STORAGE_KEY = 'roundtableDebates:v1';
+
+function readRoundtableTopicCount(): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    const raw = localStorage.getItem(ROUNDTABLE_STORAGE_KEY);
+    if (!raw) return 0;
+    const parsed = JSON.parse(raw) as { sessions?: unknown[] };
+    return Array.isArray(parsed.sessions) ? parsed.sessions.length : 0;
+  } catch {
+    return 0;
+  }
+}
 
 export default function HomePage() {
+  const { isLoggedIn } = useAuthGuard();
+  const [stats, setStats] = useState({
+    completedClassrooms: 0,
+    practiceQuestionCount: 0,
+    discussionTopics: 0,
+  });
+
+  const refreshStats = useCallback(async () => {
+    const stages = await listStages();
+    const completedClassrooms = stages.length;
+    const practiceQuestionCount = readQuizSessions().reduce(
+      (sum, item) => sum + (Number.isFinite(item.questionCount) ? item.questionCount : 0),
+      0,
+    );
+    const discussionTopics = readRoundtableTopicCount();
+    setStats({ completedClassrooms, practiceQuestionCount, discussionTopics });
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      refreshStats().catch(() => undefined);
+    }, 0);
+
+    const onFocus = () => {
+      refreshStats().catch(() => undefined);
+    };
+    const onStorage = () => {
+      refreshStats().catch(() => undefined);
+    };
+
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [refreshStats]);
+
+  if (!isLoggedIn) return null;
   return (
     <AppShell
       activeKey="home"
@@ -73,17 +131,17 @@ export default function HomePage() {
       <div className="stats-section">
         <div className="stat-card">
           <div className="stat-icon s1">📘</div>
-          <div className="stat-value">3</div>
+          <div className="stat-value">{stats.completedClassrooms}</div>
           <div className="stat-label">已完成教案</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon s2">📝</div>
-          <div className="stat-value">24</div>
+          <div className="stat-value">{stats.practiceQuestionCount}</div>
           <div className="stat-label">练习题数</div>
         </div>
         <div className="stat-card">
           <div className="stat-icon s3">💬</div>
-          <div className="stat-value">8</div>
+          <div className="stat-value">{stats.discussionTopics}</div>
           <div className="stat-label">讨论话题</div>
         </div>
         <div className="stat-card">
@@ -307,4 +365,3 @@ export default function HomePage() {
     </AppShell>
   );
 }
-

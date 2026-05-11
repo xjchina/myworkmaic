@@ -2,8 +2,12 @@
 
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 export default function ClassroomPage() {
+  const { isLoggedIn } = useAuthGuard();
+  if (!isLoggedIn) return null;
+
   return (
     <AppShell
       activeKey="classroom"
@@ -14,25 +18,16 @@ export default function ClassroomPage() {
         </Link>
       }
     >
-      <div className="preset-section">
-        <div className="section-title">预置教案（无需上传）</div>
-        <div className="preset-grid">
-          <div className="preset-card">
-            <div className="preset-title">光的折射</div>
-            <div className="preset-desc">通过实验现象讲解折射规律与全反射。</div>
-          </div>
-          <div className="preset-card">
-            <div className="preset-title">二次函数</div>
-            <div className="preset-desc">从图像入手理解顶点、对称轴与应用。</div>
-          </div>
-          <div className="preset-card">
-            <div className="preset-title">宾语从句</div>
-            <div className="preset-desc">在语境中掌握连接词和语序。</div>
-          </div>
-          <div className="preset-card">
-            <div className="preset-title">氧化还原反应</div>
-            <div className="preset-desc">理解电子转移与化合价变化。</div>
-          </div>
+      <div className="card-section">
+        <div className="section-title">3D实验入口</div>
+        <div className="card-grid">
+          <article className="info-card">
+            <div className="card-title">3D Spark 实验台</div>
+            <div className="card-desc">进入独立 3D 页面，使用内置示例模型进行旋转、缩放、平移互动学习。</div>
+            <Link className="action-btn" href="/classroom/3d-lab">
+              进入实验
+            </Link>
+          </article>
         </div>
       </div>
 
@@ -59,7 +54,7 @@ export default function ClassroomPage() {
           color: #4a5568;
           border: 2px solid #e2e8f0;
         }
-        .preset-section {
+        .card-section {
           background: white;
           border-radius: 20px;
           padding: 28px;
@@ -71,23 +66,37 @@ export default function ClassroomPage() {
           color: #1a365d;
           margin-bottom: 16px;
         }
-        .preset-grid {
+        .card-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
           gap: 14px;
         }
-        .preset-card {
-          background: #f8fafc;
+        .info-card {
+          background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+          border: 1px solid #e2e8f0;
           border-radius: 14px;
           padding: 18px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
         }
-        .preset-title {
+        .action-btn {
+          align-self: flex-start;
+          background: linear-gradient(135deg, #2563eb 0%, #4338ca 100%);
+          color: #fff;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 13px;
+          text-decoration: none;
+        }
+        .card-title {
           font-size: 16px;
           font-weight: 600;
           color: #1a365d;
           margin-bottom: 6px;
+          line-height: 1.5;
         }
-        .preset-desc {
+        .card-desc {
           font-size: 14px;
           color: #64748b;
           line-height: 1.6;

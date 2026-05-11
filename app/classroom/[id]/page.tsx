@@ -12,10 +12,12 @@ import { useWhiteboardHistoryStore } from '@/lib/store/whiteboard-history';
 import { createLogger } from '@/lib/logger';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 const log = createLogger('Classroom');
 
 export default function ClassroomDetailPage() {
+  const { isLoggedIn } = useAuthGuard();
   const params = useParams();
   const searchParams = useSearchParams();
   const classroomId = params?.id as string;
@@ -217,6 +219,8 @@ export default function ClassroomDetailPage() {
       });
     }
   }, [loading, error, generateRemaining]);
+
+  if (!isLoggedIn) return null;
 
   return (
     <ThemeProvider>

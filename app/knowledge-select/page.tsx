@@ -2,6 +2,7 @@
 
 import { AppShell } from '@/components/shell/app-shell';
 import { useRouter } from 'next/navigation';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 const subjects = [
   { icon: '📻', name: '数学' },
@@ -13,7 +14,9 @@ const subjects = [
 ];
 
 export default function KnowledgeSelectPage() {
+  const { isLoggedIn } = useAuthGuard();
   const router = useRouter();
+  if (!isLoggedIn) return null;
 
   return (
     <AppShell

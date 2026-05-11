@@ -2,8 +2,11 @@
 
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 export default function KnowledgeChatPage() {
+  const { isLoggedIn } = useAuthGuard();
+  if (!isLoggedIn) return null;
   return (
     <AppShell
       activeKey="knowledge"

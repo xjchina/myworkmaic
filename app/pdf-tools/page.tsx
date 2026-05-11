@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 function extractFileName(disposition: string | null): string {
   if (!disposition) return 'converted.pdf';
@@ -12,6 +13,7 @@ function extractFileName(disposition: string | null): string {
 }
 
 export default function PdfToolsPage() {
+  const { isLoggedIn } = useAuthGuard();
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -22,6 +24,8 @@ export default function PdfToolsPage() {
       '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     [],
   );
+
+  if (!isLoggedIn) return null;
 
   const handleConvert = async () => {
     if (!file) {

@@ -12,7 +12,9 @@ export type NavKey =
   | 'pdf-tools'
   | 'mistakes'
   | 'messages'
-  | 'account';
+  | 'account'
+  | 'login'
+  | 'register';
 
 const navIconStyle: Record<NavKey, CSSProperties> = {
   home: { background: 'rgba(102,126,234,0.2)' },
@@ -24,6 +26,8 @@ const navIconStyle: Record<NavKey, CSSProperties> = {
   mistakes: { background: 'rgba(239,68,68,0.2)' },
   messages: { background: 'rgba(249,115,22,0.2)' },
   account: { background: 'rgba(99,102,241,0.2)' },
+  login: { background: 'rgba(99,102,241,0.2)' },
+  register: { background: 'rgba(16,185,129,0.2)' },
 };
 
 function NavItem({

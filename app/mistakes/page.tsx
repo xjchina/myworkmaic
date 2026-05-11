@@ -4,23 +4,31 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, RefreshCw } from 'lucide-react';
 import { AppShell } from '@/components/shell/app-shell';
 import { readMistakeNotebookEntries, type MistakeNotebookEntry } from '@/lib/quiz/persistence';
+import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 function toCsv(entries: MistakeNotebookEntry[]): string {
-  const header = ['时间', '场景ID', '题目ID', '题干', '我的答案', '正确答案'];
+  const header = [
+    '\u65f6\u95f4',
+    '\u573a\u666fID',
+    '\u9898\u76eeID',
+    '\u9898\u5e72',
+    '\u6211\u7684\u7b54\u6848',
+    '\u6b63\u786e\u7b54\u6848',
+  ];
   const escape = (value: string) => `"${String(value).replace(/"/g, '""')}"`;
   const rows = entries.map((item) => [
     new Date(item.updatedAt || Date.now()).toLocaleString(),
     item.sceneId,
     item.questionId,
     item.question,
-    item.userAnswer || '未作答',
-    item.correctAnswer || '未提供',
+    item.userAnswer || '\u672a\u4f5c\u7b54',
+    item.correctAnswer || '\u672a\u63d0\u4f9b',
   ]);
   return [header, ...rows].map((row) => row.map(escape).join(',')).join('\n');
 }
 
 export default function MistakesPage() {
-  // Keep SSR and first client render identical to avoid hydration mismatch.
+  const { isLoggedIn } = useAuthGuard();
   const [entries, setEntries] = useState<MistakeNotebookEntry[]>([]);
 
   const reload = useCallback(() => {
@@ -58,21 +66,27 @@ export default function MistakesPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `错题本_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `\u9519\u9898\u672c_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   };
 
+  if (!isLoggedIn) return null;
+
   return (
-    <AppShell activeKey="mistakes" title="错题本" description="互动练习中的错题会自动记录在这里。">
+    <AppShell
+      activeKey="mistakes"
+      title={'\u9519\u9898\u672c'}
+      description={'\u4e92\u52a8\u7ec3\u4e60\u4e2d\u7684\u9519\u9898\u4f1a\u81ea\u52a8\u8bb0\u5f55\u5728\u8fd9\u91cc\u3002'}
+    >
       <div className="toolbar">
-        <span className="count">共 {total} 道错题</span>
+        <span className="count">{`\u5171 ${total} \u9053\u9519\u9898`}</span>
         <div className="actions">
           <button className="btn btn-outline" onClick={reload} type="button">
             <RefreshCw className="icon" />
-            刷新
+            {'\u5237\u65b0'}
           </button>
           <button
             className="btn btn-primary"
@@ -81,20 +95,20 @@ export default function MistakesPage() {
             disabled={entries.length === 0}
           >
             <Download className="icon" />
-            下载错题本
+            {'\u4e0b\u8f7d\u9519\u9898\u672c'}
           </button>
         </div>
       </div>
 
       {entries.length === 0 ? (
-        <div className="empty">暂无错题，完成练习后会自动出现。</div>
+        <div className="empty">{'\u6682\u65e0\u9519\u9898\uff0c\u5b8c\u6210\u7ec3\u4e60\u540e\u4f1a\u81ea\u52a8\u51fa\u73b0\u3002'}</div>
       ) : (
         <div className="list">
           {grouped.map(([sceneId, items]) => (
             <section className="scene-card" key={sceneId}>
               <div className="scene-head">
-                <h3>场景：{sceneId}</h3>
-                <span>{items.length} 题</span>
+                <h3>{`\u573a\u666f\uff1a${sceneId}`}</h3>
+                <span>{`${items.length} \u9898`}</span>
               </div>
               {items.map((item) => (
                 <article className="item" key={`${item.sceneId}-${item.questionId}`}>
@@ -105,12 +119,12 @@ export default function MistakesPage() {
                   <p className="question">{item.question}</p>
                   <div className="answer-grid">
                     <div className="box wrong">
-                      <div className="label">我的答案</div>
-                      <div>{item.userAnswer || '未作答'}</div>
+                      <div className="label">{'\u6211\u7684\u7b54\u6848'}</div>
+                      <div>{item.userAnswer || '\u672a\u4f5c\u7b54'}</div>
                     </div>
                     <div className="box right">
-                      <div className="label">正确答案</div>
-                      <div>{item.correctAnswer || '未提供'}</div>
+                      <div className="label">{'\u6b63\u786e\u7b54\u6848'}</div>
+                      <div>{item.correctAnswer || '\u672a\u63d0\u4f9b'}</div>
                     </div>
                   </div>
                 </article>

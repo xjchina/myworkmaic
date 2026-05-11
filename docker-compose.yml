@@ -1,15 +1,33 @@
 services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: openmaic_root
+      MYSQL_DATABASE: openmaic
+      MYSQL_USER: openmaic
+      MYSQL_PASSWORD: openmaic_pass
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   openmaic:
     build: .
     ports:
       - "3000:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
     env_file:
       - .env.local
-    volumes:
-      # Optional: mount server-providers.yml for provider config
-      # - ./server-providers.yml:/app/server-providers.yml:ro
-      - openmaic-data:/app/data
     restart: unless-stopped
 
 volumes:
+  mysql-data:
   openmaic-data:
