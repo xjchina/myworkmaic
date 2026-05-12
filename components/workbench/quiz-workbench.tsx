@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
+import { Sparkles } from 'lucide-react';
 import { QuizView } from '@/components/scene-renderers/quiz-view';
 import { useSettingsStore } from '@/lib/store/settings';
 import type { QuizQuestion } from '@/lib/types/stage';
@@ -12,6 +13,7 @@ import {
   saveQuizSession,
   type QuizSessionRecord,
 } from '@/lib/quiz/persistence';
+import { DEMO_QUIZ_QUESTIONS, DEMO_QUIZ_SUMMARY } from '@/lib/data/demo-data';
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -217,6 +219,49 @@ export function QuizWorkbench() {
         </section>
       )}
 
+      {/* ── Built-in demo quiz ── */}
+      {!pdfFile && !questions && (
+        <section className="demo-quiz-section">
+          <div className="demo-quiz-badge">
+            <Sparkles className="size-3.5" />
+            内置示例
+          </div>
+          <div className="demo-quiz-title">计算机基础综合练习</div>
+          <div className="demo-quiz-desc">
+            {DEMO_QUIZ_SUMMARY}
+          </div>
+          <div className="demo-quiz-meta">
+            <span className="meta-single">单选 ×5</span>
+            <span className="meta-multiple">多选 ×2</span>
+            <span className="meta-short">简答 ×1</span>
+            <span className="meta-total">共 {DEMO_QUIZ_QUESTIONS.reduce((s, q) => s + (q.points ?? 1), 0)} 分</span>
+          </div>
+          <button
+            type="button"
+            className="btn-demo-quiz"
+            onClick={() => {
+              const nextSceneId = `quiz-demo-${nanoid(8)}`;
+              const nextSessionId = `quiz-session-demo-${nanoid(8)}`;
+              setQuestions(DEMO_QUIZ_QUESTIONS);
+              setSceneId(nextSceneId);
+              setActiveSessionId(nextSessionId);
+              setSummary(DEMO_QUIZ_SUMMARY);
+              const nextSessions = saveQuizSession({
+                id: nextSessionId,
+                sceneId: nextSceneId,
+                sourceName: '内置示例练习',
+                summary: DEMO_QUIZ_SUMMARY,
+                questionCount: DEMO_QUIZ_QUESTIONS.length,
+                questions: DEMO_QUIZ_QUESTIONS,
+              });
+              setSavedSessions(nextSessions);
+            }}
+          >
+            开始练习
+          </button>
+        </section>
+      )}
+
       {!pdfFile && !questions && (
         <section
           className={`upload-section ${dragover ? 'dragover' : ''}`}
@@ -316,10 +361,85 @@ export function QuizWorkbench() {
         .flow-section,
         .history-section,
         .parse-section,
-        .practice-section {
+        .practice-section,
+        .demo-quiz-section {
           background: white;
           border-radius: 20px;
           padding: 32px;
+        }
+        .demo-quiz-section {
+          background: linear-gradient(135deg, #eef2ff 0%, #faf5ff 50%, #fdf2f8 100%);
+          border: 1.5px solid #c7d2fe;
+        }
+        .demo-quiz-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          color: white;
+          padding: 3px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          margin-bottom: 12px;
+        }
+        .demo-quiz-title {
+          font-size: 20px;
+          font-weight: 700;
+          color: #1a365d;
+          margin-bottom: 6px;
+        }
+        .demo-quiz-desc {
+          font-size: 14px;
+          color: #64748b;
+          line-height: 1.6;
+          margin-bottom: 12px;
+        }
+        .demo-quiz-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 18px;
+        }
+        .demo-quiz-meta span {
+          padding: 3px 10px;
+          border-radius: 6px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+        .meta-single {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+        .meta-multiple {
+          background: #dcfce7;
+          color: #166534;
+        }
+        .meta-short {
+          background: #fef3c7;
+          color: #92400e;
+        }
+        .meta-total {
+          background: #fce7f3;
+          color: #9d174d;
+        }
+        .btn-demo-quiz {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%);
+          color: white;
+          padding: 10px 24px;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 600;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-demo-quiz:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 6px 20px rgba(99, 102, 241, 0.3);
         }
         .flow-title {
           font-size: 18px;

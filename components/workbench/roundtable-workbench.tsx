@@ -1,15 +1,26 @@
-﻿'use client';
+'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Plus, Sparkles } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Plus,
+  Send,
+  Loader2,
+  MessageSquare,
+  Trash2,
+  Volume2,
+  Square,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AvatarDisplay } from '@/components/ui/avatar-display';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
+import { cn } from '@/lib/utils';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
 import type { PBLAgent } from '@/lib/pbl/types';
 
-const STORAGE_KEY = 'roundtableDebates:v1';
+const STORAGE_KEY = 'roundtableDebates:v2';
 
 type MessageRole = 'user' | 'teacher' | 'student';
 
@@ -17,8 +28,10 @@ interface DiscussionMessage {
   id: string;
   role: MessageRole;
   name: string;
+  avatar?: string;
   content: string;
   timestamp: number;
+  streaming?: boolean;
 }
 
 interface DebateSession {
@@ -26,20 +39,20 @@ interface DebateSession {
   title: string;
   createdAt: number;
   updatedAt: number;
-  rounds: number;
   messages: DiscussionMessage[];
 }
 
-interface DebateStore {
-  sessions: DebateSession[];
-}
+const DEFAULT_TEACHER_AVATAR = '/avatars/teacher.png';
+const DEFAULT_USER_AVATAR = '/avatars/user.png';
+
+// ── API helper ──────────────────────────────────────────────
 
 function toPblAgent(agent: AgentConfig): PBLAgent {
   return {
     name: agent.name,
     actor_role: agent.role,
     role_division: 'development',
-    system_prompt: `${agent.persona}\n\n你正在“独立圆桌讨论”页面发言。请严格围绕学生提问进行讨论，不跑题，不空话。输出要求：观点清晰、逻辑完整、可执行。`,
+    system_prompt: `${agent.persona}\n\n你正在"圆桌讨论"页面发言。请严格围绕学生提问进行讨论，不跑题，不空话。输出要求：观点清晰、逻辑完整、可执行。`,
     default_mode: 'agent',
     delay_time: 0,
     env: {},
@@ -86,12 +99,20 @@ async function askAgent(
   return String(data.message || '').trim();
 }
 
+// ── Agent selection ─────────────────────────────────────────
+
 function pickRoundtableAgents(selectedIds: string[], agentsMap: Record<string, AgentConfig>) {
   const selected = selectedIds.map((id) => agentsMap[id]).filter((a): a is AgentConfig => !!a);
   const source = selected.length > 0 ? selected : Object.values(agentsMap);
   const teacher = source.find((a) => a.role === 'teacher') || source[0];
   const students = source.filter((a) => a.id !== teacher?.id).slice(0, 3);
   return { teacher, students };
+}
+
+// ── Local storage helpers ───────────────────────────────────
+
+interface DebateStore {
+  sessions: DebateSession[];
 }
 
 function safeReadStore(): DebateStore {
@@ -124,6 +145,187 @@ function upsertSession(sessions: DebateSession[], target: DebateSession): Debate
   return [...next].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+// ── Speech hook ─────────────────────────────────────────────
+
+function useSpeech() {
+  const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
+  const queueRef = useRef<DiscussionMessage[]>([]);
+
+  const speakNext = useCallback(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    const next = queueRef.current.shift();
+    if (!next) {
+      setSpeakingMsgId(null);
+      return;
+    }
+    const utt = new SpeechSynthesisUtterance(next.content);
+    utt.lang = 'zh-CN';
+    if (next.role === 'teacher') {
+      utt.rate = 0.95;
+      utt.pitch = 0.9;
+    } else if (next.role === 'student') {
+      utt.rate = 1.1;
+      utt.pitch = 1.15;
+    } else {
+      utt.rate = 1.0;
+      utt.pitch = 1.0;
+    }
+    const voices = window.speechSynthesis.getVoices();
+    const zhVoice = voices.find((v) => v.lang.startsWith('zh'));
+    if (zhVoice) utt.voice = zhVoice;
+
+    setSpeakingMsgId(next.id);
+    utt.onend = () => speakNext();
+    utt.onerror = () => {
+      setSpeakingMsgId(null);
+      queueRef.current = [];
+    };
+    window.speechSynthesis.speak(utt);
+  }, []);
+
+  const speak = useCallback((msg: DiscussionMessage) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    // If currently speaking this message → stop all
+    if (speakingMsgId === msg.id || window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      queueRef.current = [];
+      setSpeakingMsgId(null);
+      // If clicked the currently playing message, just stop (don't restart)
+      if (speakingMsgId === msg.id) return;
+    }
+    queueRef.current = [msg];
+    speakNext();
+  }, [speakingMsgId, speakNext]);
+
+  const speakAll = useCallback((msgs: DiscussionMessage[]) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    queueRef.current = msgs.filter((m) => m.content && !m.streaming);
+    speakNext();
+  }, [speakNext]);
+
+  const stop = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    queueRef.current = [];
+    setSpeakingMsgId(null);
+  }, []);
+
+  return { speakingMsgId, speak, speakAll, stop };
+}
+
+// ── MessageBubble — classroom-style bubble ──────────────────
+
+function MessageBubble({
+  message,
+  isLast,
+  isRunning,
+  isSpeaking,
+  onSpeak,
+}: {
+  message: DiscussionMessage;
+  isLast: boolean;
+  isRunning: boolean;
+  isSpeaking: boolean;
+  onSpeak: () => void;
+}) {
+  const isUser = message.role === 'user';
+  const isTeacher = message.role === 'teacher';
+
+  return (
+    <div className="flex items-end gap-1.5">
+      <div
+        className={cn(
+          'inline-block px-2.5 py-1.5 rounded-xl text-[13px] leading-relaxed max-w-full text-left transition-shadow duration-300',
+          isUser
+            ? 'bg-gradient-to-br from-purple-600 to-purple-700 text-white rounded-tr-sm shadow-sm shadow-purple-300/30 ring-1 ring-purple-500/20'
+            : isTeacher
+              ? 'bg-white text-gray-700 border border-gray-100 rounded-tl-sm shadow-sm'
+              : 'bg-indigo-50 text-indigo-900 border border-indigo-100/50 rounded-tl-sm',
+        )}
+      >
+        <span className="break-words whitespace-pre-wrap">
+          {message.content}
+          {message.streaming && isLast && isRunning && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-current opacity-50 animate-pulse ml-1 align-middle" />
+          )}
+        </span>
+      </div>
+      {/* Speak button */}
+      {!message.streaming && message.content && (
+        <button
+          type="button"
+          onClick={onSpeak}
+          className={cn(
+            'shrink-0 size-5 rounded-full flex items-center justify-center transition-all duration-200',
+            isSpeaking
+              ? 'bg-violet-100 text-violet-600 ring-1 ring-violet-300'
+              : 'text-gray-300 hover:text-violet-500 hover:bg-violet-50',
+          )}
+          title={isSpeaking ? '停止朗读' : '朗读此消息'}
+        >
+          {isSpeaking ? <Square className="size-2.5 fill-current" /> : <Volume2 className="size-3" />}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Session list item ───────────────────────────────────────
+
+function SessionItem({
+  session,
+  isActive,
+  onClick,
+  onDelete,
+}: {
+  session: DebateSession;
+  isActive: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
+  const [hovering, setHovering] = useState(false);
+
+  return (
+    <div
+      className={cn(
+        'group flex items-center gap-2 px-2.5 py-0 h-[52px] rounded-lg cursor-pointer transition-all duration-200 shrink-0',
+        isActive
+          ? 'bg-violet-50 border border-violet-200/60'
+          : 'hover:bg-gray-50 border border-transparent',
+      )}
+      onClick={onClick}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <div className="flex-1 min-w-0">
+        <p className={cn('text-[13px] font-medium truncate', isActive ? 'text-violet-700' : 'text-gray-800')}>
+          {session.title || '未命名讨论'}
+        </p>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          {session.messages.length} 条消息 · {new Date(session.updatedAt).toLocaleDateString()}
+        </p>
+      </div>
+      <AnimatePresence>
+        {hovering && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="shrink-0 size-5 rounded flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 className="size-3" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Main Component ──────────────────────────────────────────
+
 export function RoundtableWorkbench() {
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
   const agentsMap = useAgentRegistry((s) => s.agents);
@@ -134,11 +336,14 @@ export function RoundtableWorkbench() {
 
   const [sessions, setSessions] = useState<DebateSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [question, setQuestion] = useState('');
+  const [inputValue, setInputValue] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const { speakingMsgId, speak, speakAll, stop: stopSpeech } = useSpeech();
 
+  // Hydrate from localStorage
   useEffect(() => {
     const store = safeReadStore();
     setSessions(store.sessions);
@@ -147,122 +352,185 @@ export function RoundtableWorkbench() {
     }
   }, []);
 
+  // Auto-scroll
   useEffect(() => {
     if (!scrollRef.current) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [activeSessionId, sessions]);
 
+  // Stop speech on session switch or unmount
+  useEffect(() => {
+    stopSpeech();
+    return () => stopSpeech();
+  }, [activeSessionId, stopSpeech]);
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
-  const saveSession = (session: DebateSession) => {
+  const saveSession = useCallback((session: DebateSession) => {
     setSessions((prev) => {
       const next = upsertSession(prev, session);
       safeWriteStore({ sessions: next });
       return next;
     });
     setActiveSessionId(session.id);
-  };
+  }, []);
 
-  const createNewSession = () => {
+  const createNewSession = useCallback(() => {
     const session: DebateSession = {
       id: `debate_${Date.now()}`,
-      title: '新辩论',
+      title: '新讨论',
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      rounds: 1,
       messages: [],
     };
     saveSession(session);
-  };
+    setInputValue('');
+    setTimeout(() => inputRef.current?.focus(), 100);
+  }, [saveSession]);
 
-  const appendMessage = (session: DebateSession, message: DiscussionMessage): DebateSession => {
+  const deleteSession = useCallback((sessionId: string) => {
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      safeWriteStore({ sessions: next });
+      return next;
+    });
+    setActiveSessionId((prev) => {
+      if (prev === sessionId) return null;
+      return prev;
+    });
+  }, []);
+
+  const appendMessage = useCallback((session: DebateSession, message: DiscussionMessage): DebateSession => {
     const next: DebateSession = {
       ...session,
       updatedAt: Date.now(),
       messages: [...session.messages, message],
       title:
         session.messages.length === 0 && message.role === 'user'
-          ? message.content.slice(0, 20)
+          ? message.content.slice(0, 24)
           : session.title,
     };
     saveSession(next);
     return next;
-  };
+  }, [saveSession]);
 
-  const startDebate = async () => {
+  const updateLastMessage = useCallback((session: DebateSession, content: string): DebateSession => {
+    const msgs = [...session.messages];
+    if (msgs.length > 0) {
+      msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content };
+    }
+    const next: DebateSession = { ...session, updatedAt: Date.now(), messages: msgs };
+    saveSession(next);
+    return next;
+  }, [saveSession]);
+
+  // Streaming simulation: reveal text character by character
+  const streamText = useCallback(async (
+    session: DebateSession,
+    fullText: string,
+    role: MessageRole,
+    name: string,
+    avatar?: string,
+  ): Promise<DebateSession> => {
+    // Add empty message first
+    const emptyMsg: DiscussionMessage = {
+      id: `msg_${Date.now()}_${role}_${Math.random().toString(36).slice(2, 6)}`,
+      role,
+      name,
+      avatar,
+      content: '',
+      timestamp: Date.now(),
+      streaming: true,
+    };
+    let working = appendMessage(session, emptyMsg);
+
+    // Reveal characters progressively
+    const chunkSize = 3;
+    for (let i = 0; i < fullText.length; i += chunkSize) {
+      await new Promise((r) => setTimeout(r, 20));
+      const revealed = fullText.slice(0, i + chunkSize);
+      working = updateLastMessage(working, revealed);
+    }
+
+    // Final: full text, streaming done
+    const finalMsgs = [...working.messages];
+    if (finalMsgs.length > 0) {
+      finalMsgs[finalMsgs.length - 1] = {
+        ...finalMsgs[finalMsgs.length - 1],
+        content: fullText,
+        streaming: false,
+      };
+    }
+    const finalSession: DebateSession = { ...working, updatedAt: Date.now(), messages: finalMsgs };
+    saveSession(finalSession);
+    return finalSession;
+  }, [appendMessage, updateLastMessage, saveSession]);
+
+  const startDebate = useCallback(async () => {
     if (!teacher || students.length === 0) return;
-    const input = question.trim();
+    const input = inputValue.trim();
     if (!input || isRunning) return;
 
     setError(null);
     setIsRunning(true);
-    setQuestion('');
+    setInputValue('');
 
     let working: DebateSession =
       activeSession ||
       {
         id: `debate_${Date.now()}`,
-        title: '新辩论',
+        title: '新讨论',
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        rounds: 1,
         messages: [],
       };
 
     try {
-      const userMessage: DiscussionMessage = {
+      // User message
+      const userMsg: DiscussionMessage = {
         id: `msg_${Date.now()}_user`,
         role: 'user',
-        name: '我（学生）',
+        name: '我',
         content: input,
         timestamp: Date.now(),
       };
-      working = appendMessage(working, userMessage);
+      working = appendMessage(working, userMsg);
 
-      let rolling = [...working.messages];
-      const round = 1;
-
+      // Teacher reply (streaming)
       const teacherPrompt = `学生提问：${input}\n\n请你作为AI老师先回答，要求：\n1. 先给结论；\n2. 再解释推理；\n3. 最后给一个可执行建议。`;
-      const teacherReply = await askAgent(teacher, teacherPrompt, rolling);
-      const teacherMessage: DiscussionMessage = {
-        id: `msg_${Date.now()}_teacher_${round}`,
-        role: 'teacher',
-        name: `${teacher.name}（第${round}轮）`,
-        content: teacherReply,
-        timestamp: Date.now(),
-      };
-      working = appendMessage(working, teacherMessage);
-      rolling = [...working.messages];
+      const teacherReply = await askAgent(teacher, teacherPrompt, working.messages);
+      working = await streamText(working, teacherReply, 'teacher', teacher.name, teacher.avatar || DEFAULT_TEACHER_AVATAR);
 
+      // Student replies (streaming)
       for (const student of students.slice(0, 2)) {
-        const studentPrompt = `讨论主题：${input}\n老师观点：${teacherReply}\n最近讨论：\n${rolling
+        const studentPrompt = `讨论主题：${input}\n老师观点：${teacherReply}\n最近讨论：\n${working.messages
           .slice(-4)
           .map((m) => `${m.name}：${m.content}`)
           .join('\n')}\n\n请你作为AI学生参与讨论，提出补充/质疑/反思，控制在3句话。`;
-
-        const studentReply = await askAgent(student, studentPrompt, rolling);
-        const studentMessage: DiscussionMessage = {
-          id: `msg_${Date.now()}_${student.id}_${round}`,
-          role: 'student',
-          name: `${student.name}（第${round}轮）`,
-          content: studentReply,
-          timestamp: Date.now(),
-        };
-        working = appendMessage(working, studentMessage);
-        rolling = [...working.messages];
+        const studentReply = await askAgent(student, studentPrompt, working.messages);
+        working = await streamText(working, studentReply, 'student', student.name, student.avatar);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '讨论生成失败');
     } finally {
       setIsRunning(false);
     }
+  }, [teacher, students, inputValue, isRunning, activeSession, appendMessage, streamText]);
+
+  // Keyboard: Enter to send (Shift+Enter for newline)
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      startDebate();
+    }
   };
 
   return (
     <div className="rt-layout">
+      {/* ── Left: session list ── */}
       <aside className="rt-sidebar">
         <div className="rt-side-head">
-          <h3>辩论记录</h3>
+          <h3>讨论记录</h3>
           <button type="button" className="rt-new" onClick={createNewSession}>
             <Plus size={14} />
             新建
@@ -270,29 +538,25 @@ export function RoundtableWorkbench() {
         </div>
         <div className="rt-side-list">
           {sessions.length === 0 ? (
-            <div className="rt-empty-side">暂无记录</div>
+            <div className="rt-empty-side">暂无记录，开始新讨论</div>
           ) : (
             sessions.map((session) => (
-              <button
+              <SessionItem
                 key={session.id}
-                type="button"
-                className={`rt-side-item ${activeSessionId === session.id ? 'active' : ''}`}
+                session={session}
+                isActive={activeSessionId === session.id}
                 onClick={() => setActiveSessionId(session.id)}
-              >
-                <div className="title">{session.title || '未命名辩论'}</div>
-                <div className="meta">{new Date(session.updatedAt).toLocaleString()}</div>
-              </button>
+                onDelete={() => deleteSession(session.id)}
+              />
             ))
           )}
         </div>
       </aside>
 
+      {/* ── Right: chat area ── */}
       <section className="rt-main">
+        {/* Agent tags */}
         <div className="rt-main-head">
-          <div>
-            <h2>连续讨论</h2>
-            <p>保留 AI 老师 + AI 学生形式，当前页独立完成讨论。</p>
-          </div>
           <div className="rt-tags">
             {teacher ? <span className="tag teacher">老师：{teacher.name}</span> : null}
             {students.slice(0, 2).map((student) => (
@@ -301,51 +565,140 @@ export function RoundtableWorkbench() {
               </span>
             ))}
           </div>
-        </div>
-
-        <div ref={scrollRef} className="rt-chat">
-          {!activeSession || activeSession.messages.length === 0 ? (
-            <div className="rt-empty-chat">输入问题后，系统会开始讨论并保存到左侧历史。</div>
-          ) : (
-            activeSession.messages.map((msg) => (
-              <article
-                key={msg.id}
-                className={`bubble ${msg.role === 'user' ? 'user' : msg.role === 'teacher' ? 'teacher' : 'student'}`}
-              >
-                <header>
-                  <span className="name">{msg.name}</span>
-                  <span className="time">{new Date(msg.timestamp).toLocaleTimeString()}</span>
-                </header>
-                <p>{msg.content}</p>
-              </article>
-            ))
+          {activeSession && activeSession.messages.length > 0 && (
+            <button
+              type="button"
+              className="rt-speak-all"
+              onClick={() => {
+                if (speakingMsgId) {
+                  stopSpeech();
+                } else {
+                  speakAll(activeSession.messages);
+                }
+              }}
+              title={speakingMsgId ? '停止朗读' : '连续朗读所有消息'}
+            >
+              {speakingMsgId ? <Square className="size-3 fill-current" /> : <Volume2 className="size-3.5" />}
+              {speakingMsgId ? '停止' : '朗读'}
+            </button>
           )}
         </div>
 
+        {/* Messages */}
+        <div ref={scrollRef} className="rt-chat">
+          {!activeSession || activeSession.messages.length === 0 ? (
+            <div className="rt-empty-chat">
+              <div className="rt-empty-icon">
+                <MessageSquare className="size-6 text-gray-300" />
+              </div>
+              <p>输入问题，开始讨论</p>
+            </div>
+          ) : (
+            activeSession.messages.map((msg, idx) => {
+              const isUser = msg.role === 'user';
+              const isTeacher = msg.role === 'teacher';
+              const avatar = isUser
+                ? DEFAULT_USER_AVATAR
+                : msg.avatar || (isTeacher ? DEFAULT_TEACHER_AVATAR : undefined);
+
+              return (
+                <motion.div
+                  key={msg.id}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: idx === activeSession.messages.length - 1 ? 0.05 : 0 }}
+                  className={cn(
+                    'flex gap-2 px-2 py-1.5 rounded-lg',
+                    isUser && 'flex-row-reverse',
+                  )}
+                >
+                  {/* Avatar */}
+                  <div className="w-6 h-6 rounded-full overflow-hidden bg-gray-100 shrink-0 mt-0.5 ring-1 ring-gray-200/50">
+                    <AvatarDisplay src={avatar || ''} alt={msg.name} className="text-xs" />
+                  </div>
+
+                  {/* Content */}
+                  <div className={cn('flex-1 min-w-0', isUser && 'text-right')}>
+                    <span
+                      className={cn(
+                        'text-[9px] font-bold uppercase tracking-wider block mb-0.5',
+                        isUser
+                          ? 'text-purple-500'
+                          : isTeacher
+                            ? 'text-purple-400'
+                            : 'text-indigo-400',
+                      )}
+                    >
+                      {msg.name}
+                    </span>
+                    <MessageBubble
+                      message={msg}
+                      isLast={idx === activeSession.messages.length - 1}
+                      isRunning={isRunning}
+                      isSpeaking={speakingMsgId === msg.id}
+                      onSpeak={() => speak(msg)}
+                    />
+                  </div>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mx-3 mb-1 px-3 py-1.5 bg-red-50 border border-red-200/50 rounded-lg text-[12px] text-red-600"
+            >
+              {error}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Input area */}
         <div className="rt-composer">
           <div className="rt-input-row">
             <textarea
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              placeholder="输入学生问题，点击开始讨论；可在同一会话持续追问..."
-              rows={2}
+              ref={inputRef}
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入问题，按 Enter 开始讨论..."
+              rows={1}
               disabled={isRunning}
+              className="rt-textarea"
             />
-            <Button onClick={startDebate} disabled={isRunning || !question.trim() || !teacher}>
-              {isRunning ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {isRunning ? '讨论中...' : '开始讨论'}
+            <Button
+              onClick={startDebate}
+              disabled={isRunning || !inputValue.trim() || !teacher}
+              className={cn(
+                'shrink-0 h-9 rounded-lg gap-1.5 px-3',
+                !isRunning && inputValue.trim() && teacher
+                  ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-sm'
+                  : '',
+              )}
+            >
+              {isRunning ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-3.5" />
+              )}
+              {isRunning ? '讨论中' : '发送'}
             </Button>
           </div>
-          {error ? <p className="rt-error">{error}</p> : null}
         </div>
       </section>
 
       <style jsx>{`
         .rt-layout {
           display: grid;
-          grid-template-columns: 280px 1fr;
-          gap: 16px;
-          min-height: 72vh;
+          grid-template-columns: 240px 1fr;
+          gap: 12px;
+          min-height: 70vh;
         }
         .rt-sidebar,
         .rt-main {
@@ -353,10 +706,13 @@ export function RoundtableWorkbench() {
           border: 1px solid #e2e8f0;
           border-radius: 16px;
         }
+
+        /* ── Sidebar ── */
         .rt-sidebar {
           display: flex;
           flex-direction: column;
-          min-height: 72vh;
+          min-height: 70vh;
+          overflow: hidden;
         }
         .rt-side-head {
           display: flex;
@@ -368,6 +724,7 @@ export function RoundtableWorkbench() {
         .rt-side-head h3 {
           margin: 0;
           font-size: 14px;
+          font-weight: 600;
           color: #0f172a;
         }
         .rt-new {
@@ -381,73 +738,74 @@ export function RoundtableWorkbench() {
           gap: 4px;
           padding: 6px 8px;
           cursor: pointer;
+          transition: all 0.15s;
+        }
+        .rt-new:hover {
+          background: #eef2ff;
+          border-color: #a5b4fc;
+          color: #4338ca;
         }
         .rt-side-list {
-          padding: 10px;
-          overflow: auto;
-          display: grid;
-          gap: 8px;
+          padding: 8px;
+          overflow-y: auto;
+          overflow-x: hidden;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          flex: 1;
         }
         .rt-empty-side {
-          color: #64748b;
+          color: #94a3b8;
           font-size: 13px;
-          padding: 12px;
+          padding: 16px 8px;
+          text-align: center;
         }
-        .rt-side-item {
-          border: 1px solid #e2e8f0;
-          border-radius: 10px;
-          background: #fff;
-          padding: 10px;
-          text-align: left;
-          cursor: pointer;
-        }
-        .rt-side-item.active {
-          border-color: #6366f1;
-          background: #eef2ff;
-        }
-        .rt-side-item .title {
-          font-size: 13px;
-          color: #0f172a;
-          font-weight: 600;
-          margin-bottom: 4px;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .rt-side-item .meta {
-          font-size: 11px;
-          color: #64748b;
-        }
+
+        /* ── Main chat area ── */
         .rt-main {
           display: flex;
           flex-direction: column;
-          min-height: 72vh;
+          min-height: 70vh;
           max-height: 80vh;
         }
         .rt-main-head {
-          padding: 16px 16px 10px;
+          padding: 12px 16px 8px;
           border-bottom: 1px solid #e2e8f0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
         }
-        .rt-main-head h2 {
-          margin: 0;
-          color: #0f172a;
-          font-size: 18px;
-        }
-        .rt-main-head p {
-          margin: 6px 0 0;
+        .rt-speak-all {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 600;
+          border: 1px solid #e2e8f0;
+          background: #f8fafc;
           color: #64748b;
-          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .rt-speak-all:hover {
+          background: #eef2ff;
+          border-color: #a5b4fc;
+          color: #4338ca;
         }
         .rt-tags {
-          margin-top: 10px;
           display: flex;
           flex-wrap: wrap;
-          gap: 8px;
+          gap: 6px;
         }
         .tag {
           border-radius: 999px;
-          font-size: 12px;
-          padding: 4px 10px;
+          font-size: 11px;
+          padding: 3px 10px;
           font-weight: 600;
         }
         .tag.teacher {
@@ -460,99 +818,75 @@ export function RoundtableWorkbench() {
         }
         .rt-chat {
           flex: 1;
-          overflow: auto;
-          padding: 14px 16px;
-          display: grid;
-          gap: 10px;
+          overflow-y: auto;
+          padding: 12px 8px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
           background: #f8fafc;
         }
         .rt-empty-chat {
-          color: #64748b;
-          font-size: 14px;
-          display: grid;
-          place-items: center;
-          min-height: 260px;
-        }
-        .bubble {
-          border-radius: 12px;
-          padding: 10px 12px;
-          border: 1px solid transparent;
-        }
-        .bubble header {
+          flex: 1;
           display: flex;
-          justify-content: space-between;
+          flex-direction: column;
           align-items: center;
-          margin-bottom: 6px;
+          justify-content: center;
+          gap: 8px;
+          color: #94a3b8;
+          font-size: 13px;
         }
-        .bubble .name {
-          font-size: 12px;
-          font-weight: 700;
+        .rt-empty-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          background: #f1f5f9;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
-        .bubble .time {
-          font-size: 11px;
-          opacity: 0.7;
-        }
-        .bubble p {
-          margin: 0;
-          white-space: pre-wrap;
-          line-height: 1.7;
-          font-size: 14px;
-        }
-        .bubble.user {
-          background: #0f172a;
-          color: #fff;
-        }
-        .bubble.teacher {
-          background: #eff6ff;
-          border-color: #bfdbfe;
-          color: #1e3a8a;
-        }
-        .bubble.student {
-          background: #ecfdf5;
-          border-color: #bbf7d0;
-          color: #14532d;
-        }
+
+        /* ── Composer ── */
         .rt-composer {
           border-top: 1px solid #e2e8f0;
           background: #fff;
-          padding: 10px 12px 12px;
-          position: sticky;
-          bottom: 0;
+          padding: 10px 12px;
         }
         .rt-input-row {
           display: grid;
           grid-template-columns: 1fr auto;
-          gap: 10px;
+          gap: 8px;
           align-items: end;
         }
-        .rt-input-row textarea {
+        .rt-textarea {
           width: 100%;
           resize: none;
-          border: 1px solid #cbd5e1;
-          border-radius: 10px;
-          padding: 10px 12px;
-          line-height: 1.6;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 8px 12px;
+          font-size: 13px;
+          line-height: 1.5;
           outline: none;
+          background: #f8fafc;
+          transition: border-color 0.2s, box-shadow 0.2s;
         }
-        .rt-input-row textarea:focus {
+        .rt-textarea:focus {
           border-color: #6366f1;
           box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.12);
+          background: #fff;
         }
-        .rt-error {
-          margin: 8px 2px 0;
-          color: #dc2626;
-          font-size: 13px;
-        }
+
+        /* ── Responsive ── */
         @media (max-width: 960px) {
           .rt-layout {
             grid-template-columns: 1fr;
           }
           .rt-sidebar {
-            min-height: 220px;
+            min-height: 200px;
+            max-height: 260px;
           }
           .rt-main {
             max-height: none;
-            min-height: 70vh;
+            min-height: 65vh;
           }
         }
       `}</style>

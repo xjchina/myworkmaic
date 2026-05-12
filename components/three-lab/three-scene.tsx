@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Preset3DObject, Preset3DScene } from '@/lib/types/three-lab';
 
 interface ThreeSceneProps {
@@ -42,7 +42,7 @@ export function ThreeScene({ preset, resetSignal = 0 }: ThreeSceneProps) {
 
     const run = async () => {
       const THREE = await import('three');
-      const controlsModule = await import('three/examples/jsm/controls/OrbitControls.js');
+      const controlsModule = await import('three/addons/controls/OrbitControls.js');
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
