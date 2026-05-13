@@ -67,6 +67,8 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  const [agreed, setAgreed] = useState(false);
+  const [agreedTouched, setAgreedTouched] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const normalizedPhone = normalizePhone(phone);
@@ -206,10 +208,25 @@ export default function LoginPage() {
             type="button"
             className="btn submit-btn"
             onClick={handleLogin}
-            disabled={submitting || (loginMethod === 'code' ? !canSubmitCodeLogin : !canSubmitPasswordLogin)}
+            disabled={submitting || !agreed || (loginMethod === 'code' ? !canSubmitCodeLogin : !canSubmitPasswordLogin)}
           >
             {submitting ? <LoadingDots /> : '登录'}
           </button>
+
+          <label className="agreement-check">
+            <input
+              type="checkbox"
+              className="agreement-checkbox"
+              checked={agreed}
+              onChange={(e) => { setAgreed(e.target.checked); setAgreedTouched(true); }}
+            />
+            <span className="agreement-check-text">
+              我已阅读并同意
+              <a href="/user_agreement.html" target="_blank" rel="noopener noreferrer" className="agreement-link">《用户服务协议》</a>
+              <a href="/privacy_policy.html" target="_blank" rel="noopener noreferrer" className="agreement-link">《隐私政策》</a>
+            </span>
+          </label>
+          {agreedTouched && !agreed && <p className="agreement-hint">请先勾选同意服务协议和隐私政策</p>}
 
           {notice && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
@@ -307,6 +324,12 @@ export default function LoginPage() {
         .submit-btn { color: #fff; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); margin-top: 8px; transition: opacity 0.2s, transform 0.15s; }
         .submit-btn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .agreement-link { color: #667eea; text-decoration: none; margin: 0 2px; }
+        .agreement-link:hover { text-decoration: underline; }
+        .agreement-check { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 14px 0 4px; cursor: pointer; }
+        .agreement-checkbox { width: 16px; height: 16px; accent-color: #667eea; cursor: pointer; flex-shrink: 0; }
+        .agreement-check-text { font-size: 12px; color: #64748b; }
+        .agreement-hint { text-align: center; font-size: 11px; color: #dc2626; margin: 0 0 4px; }
         .notice { margin-top: 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px; text-align: center; }
         .notice-info { background: #eff6ff; color: #1d4ed8; }
         .notice-success { background: #f0fdf4; color: #15803d; }

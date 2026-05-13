@@ -42,12 +42,6 @@ export default function ClassroomPage() {
               进入示例课堂
             </Link>
           </article>
-        </div>
-      </div>
-
-      <div className="card-section">
-        <div className="section-title">3D实验入口</div>
-        <div className="card-grid">
           <article className="info-card">
             <div className="card-title">3D Spark 实验台</div>
             <div className="card-desc">进入独立 3D 页面，使用内置示例模型进行旋转、缩放、平移互动学习。</div>
@@ -60,10 +54,9 @@ export default function ClassroomPage() {
       </div>
 
       <div className="embed-section">
-        <div className="embed-title">OpenMAIC 课堂生成</div>
         <iframe
           src="/openmaic?embedded=1"
-          title="OpenMAIC 课堂生成"
+          title="课堂生成"
           className="embed-frame"
           loading="lazy"
         />

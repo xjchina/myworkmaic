@@ -23,6 +23,8 @@ export const QUESTIONS_KEY_PREFIX = 'quizQuestions:';
 export const UPDATED_AT_KEY_PREFIX = 'quizUpdatedAt:';
 export const NOTEBOOK_KEY = 'mistakeNotebook:v1';
 export const QUIZ_SESSION_LIST_KEY = 'quizSessions:v1';
+export const SCENE_TITLES_KEY = 'sceneTitles:v1';
+export const SCENE_SUBJECTS_KEY = 'sceneSubjects:v1';
 
 /** Build the draft cache key for a scene. Use this everywhere that needs the
  *  in-progress quiz answers (e.g. `useDraftCache`) so the prefix stays in
@@ -30,16 +32,20 @@ export const QUIZ_SESSION_LIST_KEY = 'quizSessions:v1';
 export const draftKey = (sceneId: string): string => DRAFT_KEY_PREFIX + sceneId;
 
 export type QuizAnswers = Record<string, string | string[]>;
-export type QuizQuestionSnapshot = Pick<QuizQuestion, 'id' | 'question' | 'answer'>;
+export type QuizQuestionSnapshot = Pick<QuizQuestion, 'id' | 'question' | 'answer' | 'options' | 'type'>;
 
 export interface MistakeNotebookEntry {
   sceneId: string;
+  sceneTitle?: string;
+  subject?: string;
   questionId: string;
   question: string;
   userAnswer: string;
   correctAnswer: string;
   status: 'correct' | 'incorrect';
   updatedAt: number;
+  options?: { label: string; value: string }[];
+  type?: 'single' | 'multiple' | 'short_answer';
 }
 
 export interface QuizSessionRecord {
@@ -53,8 +59,16 @@ export interface QuizSessionRecord {
   updatedAt: number;
 }
 
+/**
+ * The notebook store now acts as a **deny-list** (removed keys) rather than
+ * a full data replica.  This avoids the stale-data problem where
+ * writeMistakeNotebookEntriesForScene() would re-insert deleted entries on
+ * every re-grade.
+ *
+ *   removedKeys  – Set of "sceneId::questionId" strings the user explicitly deleted.
+ */
 interface MistakeNotebookStore {
-  entries: MistakeNotebookEntry[];
+  removedKeys: string[];
 }
 
 export type SubmittedState =
@@ -96,26 +110,102 @@ function normalizeAnswer(value: string | string[] | undefined): string {
 
 function readNotebookStore(): MistakeNotebookStore {
   const raw = safeGet(NOTEBOOK_KEY);
-  if (!raw) return { entries: [] };
+  if (!raw) return { removedKeys: [] };
   try {
     const parsed = JSON.parse(raw) as MistakeNotebookStore;
-    if (!Array.isArray(parsed.entries)) return { entries: [] };
+    if (!Array.isArray(parsed.removedKeys)) return { removedKeys: [] };
     return {
-      entries: parsed.entries.filter(
-        (item) =>
-          item &&
-          typeof item.sceneId === 'string' &&
-          typeof item.questionId === 'string' &&
-          typeof item.question === 'string',
+      // Keep only valid "sceneId::questionId" strings
+      removedKeys: parsed.removedKeys.filter(
+        (k) => typeof k === 'string' && k.includes('::'),
       ),
     };
   } catch {
-    return { entries: [] };
+    return { removedKeys: [] };
   }
 }
 
 function writeNotebookStore(store: MistakeNotebookStore): void {
   safeSet(NOTEBOOK_KEY, JSON.stringify(store));
+}
+
+// ─── Scene title helpers ──────────────────────────────────────
+
+/** Save a scene's display name (PDF filename) so the mistakes page can show it. */
+export function saveSceneTitle(sceneId: string, title: string): void {
+  const raw = safeGet(SCENE_TITLES_KEY);
+  let map: Record<string, string> = {};
+  if (raw) {
+    try { map = JSON.parse(raw); } catch { /* ignore */ }
+  }
+  // Only update if changed or missing to avoid unnecessary writes
+  if (map[sceneId] !== title) {
+    map[sceneId] = title;
+    safeSet(SCENE_TITLES_KEY, JSON.stringify(map));
+  }
+}
+
+/** Read a scene's display name from the stored mapping. */
+export function getSceneTitle(sceneId: string): string | null {
+  const raw = safeGet(SCENE_TITLES_KEY);
+  if (!raw) return null;
+  try {
+    const map = JSON.parse(raw) as Record<string, string>;
+    return map[sceneId] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read the full scene title mapping. */
+export function getSceneTitleMap(): Record<string, string> {
+  const raw = safeGet(SCENE_TITLES_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+
+// ─── Subject helpers ──────────────────────────────────────────
+
+/** Save or change the subject for a scene (e.g. "数学", "英语"). */
+export function saveSceneSubject(sceneId: string, subject: string): void {
+  const raw = safeGet(SCENE_SUBJECTS_KEY);
+  let map: Record<string, string> = {};
+  if (raw) {
+    try { map = JSON.parse(raw); } catch { /* ignore */ }
+  }
+  if (subject) {
+    map[sceneId] = subject;
+  } else {
+    delete map[sceneId]; // empty string = clear
+  }
+  safeSet(SCENE_SUBJECTS_KEY, JSON.stringify(map));
+}
+
+/** Read a scene's subject. */
+export function getSceneSubject(sceneId: string): string | null {
+  const raw = safeGet(SCENE_SUBJECTS_KEY);
+  if (!raw) return null;
+  try {
+    const map = JSON.parse(raw) as Record<string, string>;
+    return map[sceneId] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read the full subject mapping. */
+export function getSceneSubjectMap(): Record<string, string> {
+  const raw = safeGet(SCENE_SUBJECTS_KEY);
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as Record<string, string>;
+  } catch {
+    return {};
+  }
 }
 
 /** Read quiz-view's post-submit state: answers + optional graded results. */
@@ -179,6 +269,8 @@ export function writeQuizQuestions(sceneId: string, questions: QuizQuestion[]): 
     id: q.id,
     question: q.question,
     answer: q.answer,
+    options: q.options,
+    type: q.type,
   }));
   safeSet(QUESTIONS_KEY_PREFIX + sceneId, JSON.stringify(snapshot));
 }
@@ -219,6 +311,8 @@ export function readMistakeNotebookEntries(): MistakeNotebookEntry[] {
     const questions = readQuizQuestions(sceneId);
     const questionMap = new Map(questions.map((q) => [q.id, q]));
     const updatedAt = Number(safeGet(UPDATED_AT_KEY_PREFIX + sceneId) || 0);
+    const sceneTitle = getSceneTitle(sceneId);
+    const sceneSubject = getSceneSubject(sceneId);
 
     for (const result of results) {
       if (result.status !== 'incorrect') continue;
@@ -228,47 +322,37 @@ export function readMistakeNotebookEntries(): MistakeNotebookEntry[] {
 
       entries.push({
         sceneId,
+        sceneTitle: sceneTitle || undefined,
+        subject: sceneSubject || undefined,
         questionId: result.questionId,
         question: q?.question || result.questionId,
         userAnswer,
         correctAnswer,
         status: result.status,
         updatedAt,
+        options: q?.options,
+        type: q?.type,
       });
     }
   }
 
-  return entries.sort((a, b) => b.updatedAt - a.updatedAt);
+  // Exclude entries the user has explicitly removed via the delete UI.
+  // The notebook store is a deny-list of "sceneId::questionId" keys.
+  const { removedKeys } = readNotebookStore();
+  const deletedSet = new Set(removedKeys);
+
+  return entries
+    .filter((e) => !deletedSet.has(`${e.sceneId}::${e.questionId}`))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export function writeMistakeNotebookEntriesForScene(
-  sceneId: string,
-  answers: QuizAnswers,
-  results: QuestionResult[],
+  _sceneId: string,
+  _answers: QuizAnswers,
+  _results: QuestionResult[],
 ): void {
-  const questions = readQuizQuestions(sceneId);
-  const questionMap = new Map(questions.map((q) => [q.id, q]));
-  const updatedAt = Date.now();
-
-  const incorrectEntries: MistakeNotebookEntry[] = results
-    .filter((result) => result.status === 'incorrect')
-    .map((result) => {
-      const question = questionMap.get(result.questionId);
-      return {
-        sceneId,
-        questionId: result.questionId,
-        question: question?.question || result.questionId,
-        userAnswer: normalizeAnswer(answers[result.questionId]),
-        correctAnswer: normalizeAnswer(question?.answer),
-        status: 'incorrect' as const,
-        updatedAt,
-      };
-    });
-
-  const store = readNotebookStore();
-  const retained = store.entries.filter((item) => item.sceneId !== sceneId);
-  writeNotebookStore({ entries: [...incorrectEntries, ...retained] });
-  safeSet(UPDATED_AT_KEY_PREFIX + sceneId, String(updatedAt));
+  // The notebook store is now a deny-list only; we no longer write full
+  // entry data here.  The read path builds entries live from quizResults.
 }
 
 /** Called by quiz-view on retry: wipes submitted answers + results but keeps draft lifecycle. */
@@ -277,8 +361,8 @@ export function clearSubmitted(sceneId: string): void {
   safeRemove(RESULTS_KEY_PREFIX + sceneId);
   safeRemove(UPDATED_AT_KEY_PREFIX + sceneId);
   const store = readNotebookStore();
-  const retained = store.entries.filter((item) => item.sceneId !== sceneId);
-  writeNotebookStore({ entries: retained });
+  const retained = store.removedKeys.filter((k) => !k.startsWith(sceneId + "::"));
+  writeNotebookStore({ removedKeys: retained });
 }
 
 /** Called by the stage-delete flow: wipes all three keys for a single scene. */
@@ -289,8 +373,51 @@ export function clearAllForScene(sceneId: string): void {
   safeRemove(QUESTIONS_KEY_PREFIX + sceneId);
   safeRemove(UPDATED_AT_KEY_PREFIX + sceneId);
   const store = readNotebookStore();
-  const retained = store.entries.filter((item) => item.sceneId !== sceneId);
-  writeNotebookStore({ entries: retained });
+  const retained = store.removedKeys.filter((k) => !k.startsWith(sceneId + "::"));
+  writeNotebookStore({ removedKeys: retained });
+}
+
+/** Remove a single mistake entry by adding its key to the deny-list. */
+export function removeMistakeEntry(sceneId: string, questionId: string): void {
+  const store = readNotebookStore();
+  const key = sceneId + "::" + questionId;
+  if (!store.removedKeys.includes(key)) {
+    writeNotebookStore({ removedKeys: [...store.removedKeys, key] });
+  }
+}
+
+/** Remove all mistake entries for a given scene by adding keys to deny-list. */
+export function removeMistakeEntriesByScene(sceneId: string): void {
+  const store = readNotebookStore();
+  const prefix = sceneId + "::";
+  let next = store.removedKeys.filter((k) => !k.startsWith(prefix));
+  const allEntries = readMistakeNotebookEntries();
+  for (const e of allEntries) {
+    if (e.sceneId === sceneId) {
+      const k = e.sceneId + "::" + e.questionId;
+      if (!next.includes(k)) next.push(k);
+    }
+  }
+  writeNotebookStore({ removedKeys: next });
+}
+
+/** Remove multiple mistake entries at once by adding keys to deny-list. */
+export function removeMistakeEntries(entries: { sceneId: string; questionId: string }[]): void {
+  const store = readNotebookStore();
+  const existing = new Set(store.removedKeys);
+  const added: string[] = [];
+  for (const e of entries) {
+    const k = e.sceneId + "::" + e.questionId;
+    if (!existing.has(k)) { added.push(k); existing.add(k); }
+  }
+  if (added.length > 0) {
+    writeNotebookStore({ removedKeys: [...store.removedKeys, ...added] });
+  }
+}
+
+/** Clear the entire mistake notebook (resets deny-list so everything shows again). */
+export function clearAllMistakeEntries(): void {
+  writeNotebookStore({ removedKeys: [] });
 }
 
 function isQuizQuestionLike(value: unknown): value is QuizQuestion {

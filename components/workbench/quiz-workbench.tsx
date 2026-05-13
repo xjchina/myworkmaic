@@ -31,6 +31,7 @@ export function QuizWorkbench() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);
   const [sceneId, setSceneId] = useState<string>('quiz-workbench-initial');
+  const [sceneTitle, setSceneTitle] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [savedSessions, setSavedSessions] = useState<QuizSessionRecord[]>([]);
@@ -67,6 +68,7 @@ export function QuizWorkbench() {
     setIsGenerating(false);
     setQuestions(session.questions);
     setSceneId(session.sceneId);
+    setSceneTitle(session.sourceName);
     setSummary(session.summary);
     setActiveSessionId(session.id);
 
@@ -130,6 +132,7 @@ export function QuizWorkbench() {
       const nextSessionId = `quiz-session-${nanoid(8)}`;
       setQuestions(extractedQuestions);
       setSceneId(nextSceneId);
+      setSceneTitle(pdfFile.name);
       setActiveSessionId(nextSessionId);
 
       const pageCount = parseResult.data.metadata?.pageCount;
@@ -177,134 +180,78 @@ export function QuizWorkbench() {
         </div>
       </section>
 
-      {savedSessions.length > 0 && (
-        <section className="history-section">
-          <div className="history-head">
-            <h3>历史练习</h3>
-            <span>可随时继续之前生成的练习</span>
-          </div>
-          <div className="history-list">
-            {savedSessions.map((session) => (
-              <article
-                key={session.id}
-                className={`history-item ${activeSessionId === session.id ? 'active' : ''}`}
-              >
-                <div className="history-main">
-                  <h4>{session.sourceName}</h4>
-                  <p>{session.summary}</p>
-                  <div className="history-meta">
-                    <span>{session.questionCount} 题</span>
-                    <span>{formatTime(session.updatedAt)}</span>
-                  </div>
-                </div>
-                <div className="history-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => handleOpenSavedSession(session)}
-                  >
-                    继续练习
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-outline"
-                    onClick={() => handleDeleteSession(session.id)}
-                  >
-                    删除
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* ── Two-column layout for initial state ── */}
+      {!pdfFile && !questions ? (
+        <div className="main-layout">
+          {/* Left sidebar — history */}
+          <aside className="history-sidebar">
+            <section className="history-section">
+              <div className="history-head">
+                <h3>历史练习</h3>
+                <span>{savedSessions.length} 项</span>
+              </div>
+              <div className="history-list">
+                {savedSessions.length === 0 ? (
+                  <div className="history-empty">暂无历史练习</div>
+                ) : (
+                  savedSessions.map((session) => (
+                    <article key={session.id} className={`history-item ${activeSessionId === session.id ? 'active' : ''}`}>
+                      <div className="history-main">
+                        <h4>{session.sourceName}</h4>
+                        <p>{session.summary}</p>
+                        <div className="history-meta">
+                          <span>{session.questionCount} 题</span>
+                          <span>{formatTime(session.updatedAt)}</span>
+                        </div>
+                      </div>
+                      <div className="history-actions">
+                        <button type="button" className="btn btn-primary" onClick={() => handleOpenSavedSession(session)}>继续</button>
+                        <button type="button" className="btn btn-outline" onClick={() => handleDeleteSession(session.id)}>删除</button>
+                      </div>
+                    </article>
+                  ))
+                )}
+              </div>
+            </section>
+          </aside>
 
-      {/* ── Built-in demo quiz ── */}
-      {!pdfFile && !questions && (
-        <section className="demo-quiz-section">
-          <div className="demo-quiz-badge">
-            <Sparkles className="size-3.5" />
-            内置示例
+          {/* Right content */}
+          <div className="main-content">
+            <section className="demo-quiz-section">
+              <div className="demo-quiz-badge"><Sparkles className="size-3.5" />内置示例</div>
+              <div className="demo-quiz-title">计算机基础综合练习</div>
+              <div className="demo-quiz-desc">{DEMO_QUIZ_SUMMARY}</div>
+              <div className="demo-quiz-meta">
+                <span className="meta-single">单选 ×5</span>
+                <span className="meta-multiple">多选 ×2</span>
+                <span className="meta-short">简答 ×1</span>
+                <span className="meta-total">共 {DEMO_QUIZ_QUESTIONS.reduce((s, q) => s + (q.points ?? 1), 0)} 分</span>
+              </div>
+              <button type="button" className="btn-demo-quiz" onClick={() => {
+                const nid = `quiz-demo-${nanoid(8)}`;
+                const nsid = `quiz-session-demo-${nanoid(8)}`;
+                setQuestions(DEMO_QUIZ_QUESTIONS);
+                setSceneId(nid); setSceneTitle('内置示例练习'); setActiveSessionId(nsid); setSummary(DEMO_QUIZ_SUMMARY);
+                setSavedSessions(saveQuizSession({ id: nsid, sceneId: nid, sourceName: '内置示例练习', summary: DEMO_QUIZ_SUMMARY, questionCount: DEMO_QUIZ_QUESTIONS.length, questions: DEMO_QUIZ_QUESTIONS }));
+              }}>开始练习</button>
+            </section>
+            <section className={`upload-section ${dragover ? 'dragover' : ''}`}
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDragover(true); }}
+              onDragLeave={() => setDragover(false)}
+              onDrop={(e) => { e.preventDefault(); setDragover(false); const f = e.dataTransfer.files?.[0] ?? null; if (f?.type === 'application/pdf') onFileSelected(f); }}
+            >
+              <div className="upload-title">上传练习 PDF</div>
+              <div className="upload-desc">支持拖拽上传或点击选择文件</div>
+              <div className="upload-hint">严格按照 PDF 原题生成，不会随机补题</div>
+              <button type="button" className="btn-upload" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}>选择 PDF 文件</button>
+              <input ref={fileInputRef} type="file" accept=".pdf" onChange={(e) => onFileSelected(e.target.files?.[0] ?? null)} />
+            </section>
           </div>
-          <div className="demo-quiz-title">计算机基础综合练习</div>
-          <div className="demo-quiz-desc">
-            {DEMO_QUIZ_SUMMARY}
-          </div>
-          <div className="demo-quiz-meta">
-            <span className="meta-single">单选 ×5</span>
-            <span className="meta-multiple">多选 ×2</span>
-            <span className="meta-short">简答 ×1</span>
-            <span className="meta-total">共 {DEMO_QUIZ_QUESTIONS.reduce((s, q) => s + (q.points ?? 1), 0)} 分</span>
-          </div>
-          <button
-            type="button"
-            className="btn-demo-quiz"
-            onClick={() => {
-              const nextSceneId = `quiz-demo-${nanoid(8)}`;
-              const nextSessionId = `quiz-session-demo-${nanoid(8)}`;
-              setQuestions(DEMO_QUIZ_QUESTIONS);
-              setSceneId(nextSceneId);
-              setActiveSessionId(nextSessionId);
-              setSummary(DEMO_QUIZ_SUMMARY);
-              const nextSessions = saveQuizSession({
-                id: nextSessionId,
-                sceneId: nextSceneId,
-                sourceName: '内置示例练习',
-                summary: DEMO_QUIZ_SUMMARY,
-                questionCount: DEMO_QUIZ_QUESTIONS.length,
-                questions: DEMO_QUIZ_QUESTIONS,
-              });
-              setSavedSessions(nextSessions);
-            }}
-          >
-            开始练习
-          </button>
-        </section>
-      )}
-
-      {!pdfFile && !questions && (
-        <section
-          className={`upload-section ${dragover ? 'dragover' : ''}`}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragover(true);
-          }}
-          onDragLeave={() => setDragover(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragover(false);
-            const file = e.dataTransfer.files?.[0] ?? null;
-            if (file?.type === 'application/pdf') onFileSelected(file);
-          }}
-        >
-          <div className="upload-title">{'\u4e0a\u4f20\u7ec3\u4e60 PDF'}</div>
-          <div className="upload-desc">
-            {'\u652f\u6301\u62d6\u62fd\u4e0a\u4f20\u6216\u70b9\u51fb\u9009\u62e9\u6587\u4ef6'}
-          </div>
-          <div className="upload-hint">
-            {'\u4e25\u683c\u6309 PDF \u539f\u9898\u751f\u6210\uff0c\u4e0d\u4f1a\u968f\u673a\u8865\u9898'}
-          </div>
-          <button
-            type="button"
-            className="btn-upload"
-            onClick={(e) => {
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-          >
-            {'\u9009\u62e9 PDF \u6587\u4ef6'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            onChange={(e) => onFileSelected(e.target.files?.[0] ?? null)}
-          />
-        </section>
-      )}
-
-      {pdfFile && !questions && (
+        </div>
+      ) : (
+        <>
+{pdfFile && !questions && (
         <section className="parse-section show">
           <div className="parse-header">
             <div className="parse-info">
@@ -347,13 +294,37 @@ export function QuizWorkbench() {
             </button>
           </div>
           <div className="quiz-host">
-            <QuizView key={sceneId} questions={questions} sceneId={sceneId} />
+            <QuizView key={sceneId} questions={questions} sceneId={sceneId} sceneTitle={sceneTitle ?? undefined} />
           </div>
         </section>
       )}
 
+        </>
+      )}
+
       <style jsx>{`
         .exercise-workbench {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+        .main-layout {
+          display: flex;
+          gap: 24px;
+          align-items: flex-start;
+        }
+        .history-sidebar {
+          width: 340px;
+          min-width: 340px;
+          flex-shrink: 0;
+          position: sticky;
+          top: 16px;
+          max-height: calc(100vh - 200px);
+          overflow-y: auto;
+        }
+        .main-content {
+          flex: 1;
+          min-width: 0;
           display: flex;
           flex-direction: column;
           gap: 24px;
@@ -482,13 +453,20 @@ export function QuizWorkbench() {
           font-size: 13px;
         }
         .history-list {
-          display: grid;
+          display: flex;
+          flex-direction: column;
           gap: 10px;
+        }
+        .history-empty {
+          text-align: center;
+          color: #94a3b8;
+          font-size: 13px;
+          padding: 24px 0;
         }
         .history-item {
           border: 1px solid #e2e8f0;
           border-radius: 12px;
-          padding: 12px;
+          padding: 14px;
           display: flex;
           justify-content: space-between;
           align-items: center;
@@ -508,6 +486,9 @@ export function QuizWorkbench() {
           color: #0f172a;
           font-size: 14px;
           font-weight: 600;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
         .history-main p {
           margin: 6px 0 0;
@@ -527,8 +508,23 @@ export function QuizWorkbench() {
         }
         .history-actions {
           display: flex;
-          gap: 8px;
+          gap: 4px;
           flex-shrink: 0;
+        }
+        .history-actions .btn {
+          font-size: 11px;
+          padding: 4px 10px;
+          border-radius: 7px;
+        }
+        .history-actions .btn-primary {
+          background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+          color: white;
+          border: none;
+        }
+        .history-actions .btn-outline {
+          background: #f1f5f9;
+          color: #64748b;
+          border: 1px solid #e2e8f0;
         }
         .flow-step {
           display: flex;
@@ -732,6 +728,14 @@ export function QuizWorkbench() {
           overflow: hidden;
         }
         @media (max-width: 960px) {
+          .main-layout {
+            flex-direction: column;
+          }
+          .history-sidebar {
+            width: 100%;
+            position: static;
+            max-height: none;
+          }
           .flow-steps {
             flex-wrap: wrap;
             justify-content: center;

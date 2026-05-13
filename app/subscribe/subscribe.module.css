@@ -1,0 +1,519 @@
+/* ==================== Subscribe Page ==================== */
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ─── Status Bar ────────────────────────────────────── */
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid #eef2f6;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.statusInfo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+.statusExpiry {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.redeemToggleButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.redeemToggleButton:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+
+/* ─── Redeem Panel ──────────────────────────────────── */
+
+.redeemPanel {
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #fcd34d;
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.redeemIcon {
+  size: 28px;
+  margin-bottom: 8px;
+  color: #d97706;
+}
+
+.redeemTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #92400e;
+  margin: 0 0 4px;
+}
+
+.redeemDesc {
+  font-size: 13px;
+  color: #a16207;
+  margin: 0 0 16px;
+}
+
+.redeemInputRow {
+  display: flex;
+  gap: 10px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.redeemInput {
+  flex: 1;
+  padding: 11px 16px;
+  font-size: 15px;
+  letter-spacing: 2px;
+  font-weight: 600;
+  text-align: center;
+  border: 2px dashed #f59e0b;
+  border-radius: 12px;
+  outline: none;
+  background: rgba(255,255,255,0.7);
+  color: #92400e;
+  transition: border-color 0.2s;
+}
+
+.redeemInput::placeholder {
+  letter-spacing: normal;
+  font-weight: 400;
+  color: #d9770660;
+}
+
+.redeemInput:focus {
+  border-color: #d97706;
+  border-style: solid;
+}
+
+.redeemButton {
+  padding: 11px 22px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.redeemButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(217,119,6,0.3);
+}
+
+.redeemButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Plan Cards Grid ───────────────────────────────── */
+
+.plansGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* ─── Plan Card ────────────────────────────────────── */
+
+.planCard {
+  position: relative;
+  background: #fff;
+  border: 2px solid #eef2f6;
+  border-radius: 20px;
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  overflow: hidden;
+}
+
+.planCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08);
+}
+
+.planCardRecommended {
+  border-color: #c7d2fe;
+}
+
+.planCardRecommended:hover {
+  border-color: #818cf8;
+  box-shadow: 0 12px 36px rgba(79,70,229,0.15);
+}
+
+.planCardCurrent {
+  opacity: 0.85;
+  border-color: #bbf7d0;
+}
+
+.planBadge {
+  position: absolute;
+  top: -1px;
+  right: 20px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 14px;
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+  letter-spacing: 0.5px;
+}
+
+.planHeader {
+  text-align: center;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 18px;
+}
+
+.planIconWrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.planIconWrap :global(svg) {
+  width: 26px;
+  height: 26px;
+  color: #fff;
+}
+
+.planName {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  letter-spacing: 0.5px;
+}
+
+.planPriceRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
+.planPrice {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.planPeriod {
+  font-size: 14px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+/* Feature list */
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 22px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 5px 0;
+}
+
+.featureItemPremium {
+  font-weight: 500;
+}
+
+.featureCheck {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.featureName {
+  flex: 1;
+  color: #475569;
+}
+
+.featureValue {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* CTA */
+.planCtaDisabled {
+  text-align: center;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: #f8fafc;
+  border-radius: 12px;
+  cursor: default;
+}
+
+.planCtaActive {
+  text-align: center;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #15803d;
+  background: #dcfce7;
+  border-radius: 12px;
+}
+
+.planCtaButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.planCtaButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+}
+
+.ctaArrow {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s;
+}
+
+.planCtaButton:hover .ctaArrow {
+  transform: translateX(3px);
+}
+
+/* ─── Invite / Share Panel ──────────────────────────── */
+
+.invitePanel {
+  background: #fff;
+  border: 1px solid #eef2f6;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+
+.inviteTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 4px;
+}
+
+.inviteDesc {
+  font-size: 13px;
+  color: #64748b;
+  margin: 0 0 16px;
+}
+
+.inviteStats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+}
+
+.inviteStatItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.inviteStatValue {
+  font-size: 24px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.inviteStatLabel {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.inviteStatDivider {
+  width: 1px;
+  height: 36px;
+  background: #e2e8f0;
+}
+
+.inviteButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  width: 100%;
+  justify-content: center;
+}
+
+.inviteButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+}
+
+/* ─── FAQ Section ───────────────────────────────────── */
+
+.faqSection {
+  background: #fff;
+  border: 1px solid #eef2f6;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.faqTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 14px;
+}
+
+.faqItem {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 12px 0;
+}
+
+.faqItem:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.faqItem[open] .faqChevron {
+  transform: rotate(90deg);
+}
+
+.faqQuestion {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  user-select: none;
+}
+
+.faqQuestion::-webkit-details-marker {
+  display: none;
+}
+
+.faqChevron {
+  transition: transform 0.2s;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.faqAnswer {
+  font-size: 13px;
+  color: #64748b;
+  line-height: 1.65;
+  margin: 8px 0 0;
+  padding-left: 4px;
+}
+
+/* ─── Responsive ────────────────────────────────────── */
+
+@media (max-width: 1024px) {
+  .plansGrid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  .planCard {
+    padding: 20px 16px;
+  }
+  .planPrice {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .plansGrid {
+    grid-template-columns: 1fr;
+    max-width: 420px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  .statusBar {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+
+  .statusInfo {
+    justify-content: center;
+  }
+}

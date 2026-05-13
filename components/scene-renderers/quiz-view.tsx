@@ -31,6 +31,7 @@ import {
   writeSubmittedAnswers,
   writeSubmittedResults,
   writeMistakeNotebookEntriesForScene,
+  saveSceneTitle,
   type SubmittedState,
 } from '@/lib/quiz/persistence';
 
@@ -41,6 +42,7 @@ type Phase = 'not_started' | 'answering' | 'grading' | 'reviewing';
 interface QuizViewProps {
   readonly questions: QuizQuestion[];
   readonly sceneId: string;
+  readonly sceneTitle?: string;
 }
 
 /** Call /api/quiz-grade for a single short-answer question. */
@@ -710,7 +712,7 @@ function AnswerSheet({
   );
 }
 
-export function QuizView({ questions, sceneId }: QuizViewProps) {
+export function QuizView({ questions, sceneId, sceneTitle }: QuizViewProps) {
   const { t, locale } = useI18n();
 
   // Rehydrate submitted state from localStorage on first mount. Runs once.
@@ -731,6 +733,13 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
   useEffect(() => {
     writeQuizQuestions(sceneId, questions);
   }, [sceneId, questions]);
+
+  // Save scene display name (PDF filename) so the mistakes page can show it
+  useEffect(() => {
+    if (sceneTitle) {
+      saveSceneTitle(sceneId, sceneTitle);
+    }
+  }, [sceneId, sceneTitle]);
 
   // Draft cache for quiz answers, keyed by sceneId to isolate across classrooms
   const {

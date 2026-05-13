@@ -9,7 +9,7 @@ export default function KnowledgeTreePage() {
   if (!isLoggedIn) return null;
   return (
     <AppShell
-      activeKey="knowledge"
+      activeKey="knowledge-tree"
       title="🌳 知识树"
       description="学习进度与知识点掌握可视化"
       actions={

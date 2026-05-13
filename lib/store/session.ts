@@ -33,6 +33,8 @@ interface UserData {
   avatar: string | null;
   createdAt: number;
   lastLoginAt: number;
+  subscriptionType?: string;
+  subscriptionExpiresAt?: string | null;
 }
 
 interface SessionState {
@@ -42,6 +44,8 @@ interface SessionState {
   userId: string;
   userCreatedAt: number;
   userLastLoginAt: number;
+  subscriptionType: string;
+  subscriptionExpiresAt: string | null;
   /** Initialize session from server cookie — call once on app load */
   refreshSession: () => Promise<void>;
   /** Send OTP code to phone */
@@ -73,6 +77,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
   userId: '',
   userCreatedAt: 0,
   userLastLoginAt: 0,
+  subscriptionType: 'free',
+  subscriptionExpiresAt: null,
 
   refreshSession: async () => {
     try {
@@ -85,6 +91,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
           userId: '',
           userCreatedAt: 0,
           userLastLoginAt: 0,
+          subscriptionType: 'free',
+          subscriptionExpiresAt: null,
         });
         return;
       }
@@ -97,6 +105,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
           userId: data.user.id,
           userCreatedAt: data.user.createdAt,
           userLastLoginAt: data.user.lastLoginAt,
+          subscriptionType: data.user.subscriptionType || 'free',
+          subscriptionExpiresAt: data.user.subscriptionExpiresAt ?? null,
         });
       } else {
         set({
@@ -106,6 +116,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
           userId: '',
           userCreatedAt: 0,
           userLastLoginAt: 0,
+          subscriptionType: 'free',
+          subscriptionExpiresAt: null,
         });
       }
     } catch {
@@ -238,6 +250,8 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
       userId: '',
       userCreatedAt: 0,
       userLastLoginAt: 0,
+      subscriptionType: 'free',
+      subscriptionExpiresAt: null,
     });
   },
 

@@ -19,9 +19,8 @@ const inter = localFont({
 });
 
 export const metadata: Metadata = {
-  title: 'OpenMAIC',
-  description:
-    'The open-source AI interactive classroom. Upload a PDF to instantly generate an immersive, multi-agent learning experience.',
+  title: '纸忆',
+  description: '纸忆 - 白纸回忆法 · AI 学习辅助工具。基于清华大学 OPENMAIC 开源项目，提供智能学习工具与方法分享。',
 };
 
 export default function RootLayout({

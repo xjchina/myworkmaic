@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 const subjects = [
-  { icon: '📻', name: '数学' },
-  { icon: '⚿', name: '物理' },
+  { icon: '📐', name: '数学' },
+  { icon: '⚡', name: '物理' },
   { icon: '🧪', name: '化学' },
   { icon: '📋', name: '英语' },
-  { icon: '📃', name: '语文' },
+  { icon: '🌍', name: '地理' },
   { icon: '📍', name: '生物' },
+  { icon: '🏛️', name: '政治' },
+  { icon: '📜', name: '历史' },
 ];
 
 export default function KnowledgeSelectPage() {
@@ -133,4 +135,3 @@ export default function KnowledgeSelectPage() {
     </AppShell>
   );
 }
-

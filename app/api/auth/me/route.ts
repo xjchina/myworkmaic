@@ -18,6 +18,10 @@ export async function GET() {
       phone: user.phone,
       displayName: user.displayName,
       avatar: user.avatar,
+      subscriptionType: user.subscriptionType,
+      subscriptionExpiresAt: user.subscriptionExpiresAt
+        ? user.subscriptionExpiresAt.toISOString().slice(0, 10)
+        : null,
       createdAt: user.createdAt.getTime(),
       lastLoginAt: user.lastLoginAt.getTime(),
     },

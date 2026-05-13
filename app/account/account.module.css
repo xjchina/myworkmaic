@@ -1,0 +1,115 @@
+/* ─── Membership Card (inside profile sidebar) ── */
+
+.membershipCard {
+  width: 100%;
+  background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.membershipFree {
+  background: linear-gradient(135deg, #fffbeb, #fef3c7);
+  border-color: #fcd34d;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 4px 16px;
+  border-radius: 20px;
+  letter-spacing: 0.3px;
+}
+
+.expiryText {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.daysLeft {
+  display: block;
+  font-weight: 600;
+  color: #334155;
+  font-size: 11.5px;
+}
+
+.upgradeBtn,
+.manageBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.upgradeBtn {
+  color: #fff;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  width: 100%;
+  justify-content: center;
+}
+
+.upgradeBtn:hover {
+  box-shadow: 0 2px 8px rgba(217,119,6,0.3);
+  transform: translateY(-1px);
+}
+
+.manageBtn {
+  color: #4f46e5;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  width: 100%;
+  justify-content: center;
+}
+
+.manageBtn:hover {
+  background: #e0e7ff;
+}
+
+.permSummary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.permDivider {
+  width: 1px;
+  height: 12px;
+  background: #cbd5e1;
+}
+
+/* Skeleton loading */
+.skeleton {
+  width: 100%;
+  height: 90px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

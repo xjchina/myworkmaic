@@ -1,8 +1,13 @@
 'use client';
 
+import { useEffect } from 'react';
+import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
 import { useSessionStore } from '@/lib/store/session';
+import { useSubscriptionStore, PLAN_META, type SubscriptionType } from '@/lib/store/subscription';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
+import { Crown, Sparkles, Zap, ArrowRight, Gift, Users } from 'lucide-react';
+import styles from './account.module.css';
 
 function maskPhone(phone: string): string {
   if (phone.length !== 11) return phone;
@@ -12,6 +17,76 @@ function maskPhone(phone: string): string {
 function formatDateTime(timestamp?: number): string {
   if (!timestamp) return '-';
   return new Date(timestamp).toLocaleString('zh-CN', { hour12: false });
+}
+
+const PLAN_ICONS: Record<SubscriptionType, typeof Zap> = {
+  free: Zap,
+  sub: Sparkles,
+  vip: Crown,
+};
+
+/** Membership status card for the left sidebar */
+function MembershipCard() {
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const loading = useSubscriptionStore((s) => s.loading);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
+
+  useEffect(() => {
+    fetchSubscription();
+  }, [fetchSubscription]);
+
+  const subType = subscription?.subscriptionType ?? 'free';
+  const meta = PLAN_META[subType];
+  const PlanIcon = PLAN_ICONS[subType];
+
+  if (loading) {
+    return (
+      <div className={styles.membershipCard}>
+        <div className={styles.skeleton} />
+      </div>
+    );
+  }
+
+  const isFree = subType === 'free';
+
+  return (
+    <div className={`${styles.membershipCard} ${isFree ? styles.membershipFree : ''}`}>
+      <div className={`${styles.badge}`} style={{ background: meta.gradient }}>
+        <PlanIcon className="size-4" />
+        <span>{meta.label}</span>
+      </div>
+
+      {!isFree && subscription?.expiresAt && (
+        <p className={styles.expiryText}>
+          到期：{subscription.expiresAt}
+          <span className={styles.daysLeft}>剩余 {subscription.remainingDays} 天</span>
+        </p>
+      )}
+
+      {isFree ? (
+        <Link href="/subscribe" className={styles.upgradeBtn}>
+          升级会员
+          <ArrowRight className="size-3.5" />
+        </Link>
+      ) : (
+        <Link href="/subscribe" className={styles.manageBtn}>
+          管理订阅
+          <ArrowRight className="size-3.5" />
+        </Link>
+      )}
+
+      {/* Quick permissions summary */}
+      <div className={styles.permSummary}>
+        <span title={`每日教案课堂: ${subType === 'vip' ? '无限' : subscription?.permissions?.classroomDaily + '次'}`}>
+          教案 {subType === 'vip' ? '∞' : subscription?.permissions?.classroomDaily ?? 3}
+        </span>
+        <span className={styles.permDivider} />
+        <span title={`每日练习: ${subType === 'vip' ? '无限' : subscription?.permissions?.exerciseDaily + '题'}`}>
+          练习 {subType === 'vip' ? '∞' : subscription?.permissions?.exerciseDaily ?? 5}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 export default function AccountPage() {
@@ -45,6 +120,10 @@ export default function AccountPage() {
               <span className="ps-label">最近登录</span>
             </div>
           </div>
+
+          {/* Membership card inside profile section */}
+          <MembershipCard />
+
           <button type="button" className="btn logout-btn" onClick={logout}>
             退出登录
           </button>
@@ -70,6 +149,23 @@ export default function AccountPage() {
               <strong>{formatDateTime(userLastLoginAt)}</strong>
             </div>
           </div>
+
+          {/* Quick actions */}
+          <div className="quick-actions">
+            <Link href="/subscribe" className="quick-action-btn primary">
+              <Crown className="size-4" />
+              我的会员
+            </Link>
+            <Link href="/subscribe" className="quick-action-btn secondary">
+              <Gift className="size-4" />
+              兑换码
+            </Link>
+            <Link href="/subscribe" className="quick-action-btn secondary">
+              <Users className="size-4" />
+              邀请好友
+            </Link>
+          </div>
+
           <button type="button" className="btn logout-btn" onClick={logout}>
             退出登录
           </button>
@@ -181,6 +277,43 @@ export default function AccountPage() {
         .logout-btn:hover {
           background: #fee2e2;
         }
+
+        /* Quick action buttons row */
+        .quick-actions {
+          display: flex;
+          gap: 10px;
+          margin-top: 18px;
+          flex-wrap: wrap;
+        }
+        .quick-action-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          font-size: 13px;
+          font-weight: 600;
+          border-radius: 10px;
+          text-decoration: none;
+          transition: all 0.15s ease;
+        }
+        .primary {
+          color: #fff;
+          background: linear-gradient(135deg, #f59e0b, #d97706);
+          border: none;
+        }
+        .primary:hover {
+          box-shadow: 0 2px 8px rgba(217,119,6,0.25);
+          transform: translateY(-1px);
+        }
+        .secondary {
+          color: #4f46e5;
+          background: #eef2ff;
+          border: 1px solid #c7d2fe;
+        }
+        .secondary:hover {
+          background: #e0e7ff;
+        }
+
         @media (max-width: 900px) {
           .account-wrap {
             grid-template-columns: 1fr;

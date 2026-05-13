@@ -111,8 +111,29 @@
   transition: background 0.2s ease;
 }
 
-.user:hover {
-  background: rgba(255, 255, 255, 0.08);
+.userMenuOpen {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Clickable trigger — removes default button appearance */
+.userTrigger {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  outline: none;
+  color: inherit;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.userTrigger:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 12px;
 }
 
 .avatar {
@@ -138,24 +159,43 @@
   font-size: 12px;
 }
 
+/* Dropdown chevron indicator */
+.userChevron {
+  color: rgba(255, 255, 255, 0.45);
+  transition: transform 0.25s ease;
+  flex-shrink: 0;
+}
+
+.userChevronOpen {
+  transform: rotate(180deg);
+}
+
 .userMenu {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  width: 180px;
+  width: 190px;
   display: none;
   flex-direction: column;
   gap: 4px;
   padding: 10px;
-  border-radius: 12px;
+  border-radius: 14px;
   background: white;
-  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.18), 0 0 1px rgba(0, 0, 0, 0.06);
   border: 1px solid #e2e8f0;
   z-index: 120;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  pointer-events: none;
 }
 
-.user:hover .userMenu {
+/* Show when .userMenuVisible is applied via JS state */
+.userMenuVisible {
   display: flex;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
 }
 
 .userMenuItem {

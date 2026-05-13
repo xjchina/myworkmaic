@@ -9,10 +9,12 @@ export type NavKey =
   | 'exercise'
   | 'roundtable'
   | 'knowledge'
+  | 'knowledge-tree'
   | 'pdf-tools'
   | 'mistakes'
   | 'messages'
   | 'account'
+  | 'subscribe'
   | 'login'
   | 'register';
 
@@ -22,10 +24,12 @@ const navIconStyle: Record<NavKey, CSSProperties> = {
   exercise: { background: 'rgba(236,72,153,0.2)' },
   roundtable: { background: 'rgba(245,158,11,0.2)' },
   knowledge: { background: 'rgba(16,185,129,0.2)' },
+  'knowledge-tree': { background: 'rgba(16,185,129,0.2)' },
   'pdf-tools': { background: 'rgba(14,165,233,0.2)' },
   mistakes: { background: 'rgba(239,68,68,0.2)' },
   messages: { background: 'rgba(249,115,22,0.2)' },
   account: { background: 'rgba(99,102,241,0.2)' },
+  subscribe: { background: 'rgba(245,158,11,0.2)' },
   login: { background: 'rgba(99,102,241,0.2)' },
   register: { background: 'rgba(16,185,129,0.2)' },
 };
@@ -75,7 +79,7 @@ export function AppShell({
         <div className={styles.topbarInner}>
           <Link href="/" className={styles.logo}>
             <div className={styles.logoIcon}>学</div>
-            <span className={styles.logoText}>OpenMAIC 学习台</span>
+            <span className={styles.logoText}>纸忆</span>
           </Link>
 
           <nav className={styles.topNav}>
