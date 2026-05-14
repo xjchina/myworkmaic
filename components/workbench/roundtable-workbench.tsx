@@ -17,6 +17,8 @@ import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { cn } from '@/lib/utils';
+import { trackUsage } from '@/lib/client/usage-tracker';
+import { useSubscriptionStore } from '@/lib/store/subscription';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
 import type { PBLAgent } from '@/lib/pbl/types';
 
@@ -137,6 +139,19 @@ function safeWriteStore(store: DebateStore): void {
   }
 }
 
+function filterSessionsByHistory(sessions: DebateSession[], dataHistory: 'today' | 'week' | 'full'): DebateSession[] {
+  if (dataHistory === 'full') return sessions;
+
+  const now = Date.now();
+  const cutoffMs = dataHistory === 'today' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  const cutoff = now - cutoffMs;
+
+  return sessions.filter((item) => {
+    const updatedAt = Number(item.updatedAt || item.createdAt || 0);
+    return updatedAt >= cutoff;
+  });
+}
+
 function upsertSession(sessions: DebateSession[], target: DebateSession): DebateSession[] {
   const existed = sessions.some((s) => s.id === target.id);
   const next = existed
@@ -151,7 +166,7 @@ function useSpeech() {
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
   const queueRef = useRef<DiscussionMessage[]>([]);
 
-  const speakNext = useCallback(() => {
+  const speakNext = useCallback(function runSpeakNext() {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     const next = queueRef.current.shift();
     if (!next) {
@@ -175,7 +190,7 @@ function useSpeech() {
     if (zhVoice) utt.voice = zhVoice;
 
     setSpeakingMsgId(next.id);
-    utt.onend = () => speakNext();
+    utt.onend = runSpeakNext;
     utt.onerror = () => {
       setSpeakingMsgId(null);
       queueRef.current = [];
@@ -329,6 +344,8 @@ function SessionItem({
 export function RoundtableWorkbench() {
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
   const agentsMap = useAgentRegistry((s) => s.agents);
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
   const { teacher, students } = useMemo(
     () => pickRoundtableAgents(selectedAgentIds, agentsMap),
     [selectedAgentIds, agentsMap],
@@ -343,14 +360,25 @@ export function RoundtableWorkbench() {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { speakingMsgId, speak, speakAll, stop: stopSpeech } = useSpeech();
 
+  useEffect(() => {
+    void fetchSubscription();
+  }, [fetchSubscription]);
+
   // Hydrate from localStorage
   useEffect(() => {
     const store = safeReadStore();
-    setSessions(store.sessions);
-    if (store.sessions.length > 0) {
-      setActiveSessionId(store.sessions[0].id);
+    const historyPolicy = subscription?.permissions?.dataHistory ?? 'today';
+    const visibleSessions = filterSessionsByHistory(store.sessions, historyPolicy);
+
+    if (visibleSessions.length !== store.sessions.length) {
+      safeWriteStore({ sessions: visibleSessions });
     }
-  }, []);
+
+    setSessions(visibleSessions);
+    if (visibleSessions.length > 0) {
+      setActiveSessionId(visibleSessions[0].id);
+    }
+  }, [subscription?.permissions?.dataHistory]);
 
   // Auto-scroll
   useEffect(() => {
@@ -484,6 +512,7 @@ export function RoundtableWorkbench() {
         updatedAt: Date.now(),
         messages: [],
       };
+    const isNewTopic = working.messages.length === 0;
 
     try {
       // User message
@@ -495,6 +524,14 @@ export function RoundtableWorkbench() {
         timestamp: Date.now(),
       };
       working = appendMessage(working, userMsg);
+      if (isNewTopic) {
+        void trackUsage({
+          feature: 'roundtable',
+          action: 'topic_started',
+          subject: input.slice(0, 100),
+          durationSeconds: 1,
+        });
+      }
 
       // Teacher reply (streaming)
       const teacherPrompt = `学生提问：${input}\n\n请你作为AI老师先回答，要求：\n1. 先给结论；\n2. 再解释推理；\n3. 最后给一个可执行建议。`;

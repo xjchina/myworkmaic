@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
 import { useSessionStore } from '@/lib/store/session';
@@ -14,6 +14,10 @@ function normalizePhone(phone: string): string {
 
 function isValidPhone(phone: string): boolean {
   return /^1\d{10}$/.test(phone);
+}
+
+function normalizeInviteCode(code: string): string {
+  return code.trim().toUpperCase();
 }
 
 function getPhoneError(phone: string): string | null {
@@ -55,6 +59,7 @@ function LoadingDots() {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
   const sendOtp = useSessionStore((s) => s.sendOtp);
   const loginWithCode = useSessionStore((s) => s.loginWithCode);
@@ -72,6 +77,7 @@ export default function LoginPage() {
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const normalizedPhone = normalizePhone(phone);
+  const inviteCodeFromUrl = normalizeInviteCode(searchParams.get('invite') || '');
   const phoneReady = isValidPhone(normalizedPhone);
   const phoneError = getPhoneError(normalizedPhone);
 
@@ -230,6 +236,14 @@ export default function LoginPage() {
 
           {notice && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
+          {inviteCodeFromUrl ? (
+            <div className="invite-hint">
+              当前邀请码：{inviteCodeFromUrl}。新用户请先
+              <Link href={`/register?invite=${inviteCodeFromUrl}`} className="auth-link">注册</Link>
+              ，注册后即可绑定邀请关系。
+            </div>
+          ) : null}
+
           <div className="test-account-hint">
             <button
               type="button"
@@ -246,7 +260,7 @@ export default function LoginPage() {
           </div>
 
           <div className="auth-footer">
-            还没有账号？<Link href="/register" className="auth-link">去注册 →</Link>
+            还没有账号？<Link href={inviteCodeFromUrl ? `/register?invite=${inviteCodeFromUrl}` : '/register'} className="auth-link">去注册 →</Link>
           </div>
         </div>
       </div>
@@ -334,6 +348,16 @@ export default function LoginPage() {
         .notice-info { background: #eff6ff; color: #1d4ed8; }
         .notice-success { background: #f0fdf4; color: #15803d; }
         .notice-error { background: #fef2f2; color: #b91c1c; }
+        .invite-hint {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: #eef2ff;
+          border: 1px solid #c7d2fe;
+          color: #3730a3;
+          font-size: 13px;
+          text-align: center;
+        }
         .auth-footer { text-align: center; margin-top: 20px; font-size: 14px; color: #64748b; }
         .auth-link { color: #4f46e5; font-weight: 600; text-decoration: none; }
         .auth-link:hover { text-decoration: underline; }

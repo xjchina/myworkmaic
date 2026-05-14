@@ -253,6 +253,10 @@
   gap: 16px;
 }
 
+.headerInfo {
+  min-width: 0;
+}
+
 .title {
   font-size: 24px;
   font-weight: 700;

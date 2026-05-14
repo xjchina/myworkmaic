@@ -23,6 +23,8 @@ import { useStageStore } from '@/lib/store/stage';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useExportPPTX } from '@/lib/export/use-export-pptx';
 import { useExportClassroom } from '@/lib/export/use-export-classroom';
+import { useSubscriptionStore } from '@/lib/store/subscription';
+import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
 
 interface HeaderProps {
   readonly currentSceneTitle: string;
@@ -34,6 +36,10 @@ export function Header({ currentSceneTitle }: HeaderProps) {
   const router = useRouter();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
+  const { forceShow, UpgradeModal } = useUpgradeGuard();
+  const hasExportPermission = subscription?.permissions?.dataExport ?? false;
 
   // Export
   const { exporting: isExporting, exportPPTX, exportResourcePack } = useExportPPTX();
@@ -50,6 +56,12 @@ export function Header({ currentSceneTitle }: HeaderProps) {
     generatingOutlines.length === 0 &&
     failedOutlines.length === 0 &&
     Object.values(mediaTasks).every((task) => task.status === 'done' || task.status === 'failed');
+
+  useEffect(() => {
+    if (!subscription) {
+      void fetchSubscription();
+    }
+  }, [subscription, fetchSubscription]);
 
   const themeRef = useRef<HTMLDivElement>(null);
 
@@ -180,20 +192,29 @@ export function Header({ currentSceneTitle }: HeaderProps) {
         <div className="relative" ref={exportRef}>
           <button
             onClick={() => {
-              if (canExport && !isExporting && !isExportingZip) setExportMenuOpen(!exportMenuOpen);
+              if (!canExport || isExporting || isExportingZip) return;
+              if (!hasExportPermission) {
+                forceShow('export');
+                return;
+              }
+              setExportMenuOpen(!exportMenuOpen);
             }}
             disabled={!canExport || isExporting || isExportingZip}
             title={
               canExport
                 ? isExporting || isExportingZip
                   ? t('export.exporting')
-                  : t('export.pptx')
+                  : hasExportPermission
+                    ? t('export.pptx')
+                    : '会员专属导出能力'
                 : t('share.notReady')
             }
             className={cn(
               'shrink-0 p-2 rounded-full transition-all',
               canExport && !isExporting && !isExportingZip
-                ? 'text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm'
+                ? hasExportPermission
+                  ? 'text-gray-400 dark:text-gray-500 hover:bg-white dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200 hover:shadow-sm'
+                  : 'text-amber-500 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:shadow-sm'
                 : 'text-gray-300 dark:text-gray-600 cursor-not-allowed opacity-50',
             )}
           >
@@ -251,6 +272,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
         </div>
       </header>
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <UpgradeModal />
     </>
   );
 }

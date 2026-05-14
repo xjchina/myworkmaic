@@ -45,17 +45,34 @@ export async function findUserById(id: string) {
   return rows[0] ?? null;
 }
 
+export async function findUserByInviteCode(inviteCode: string) {
+  const code = inviteCode.trim().toUpperCase();
+  if (!code) return null;
+  const rows = await db
+    .select({
+      id: users.id,
+      displayName: users.displayName,
+      inviteCode: users.inviteCode,
+    })
+    .from(users)
+    .where(eq(users.inviteCode, code))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 export async function createUser(data: {
   id: string;
   phone: string;
   passwordHash: string;
   displayName?: string;
+  invitedBy?: string | null;
 }) {
   await db.insert(users).values({
     id: data.id,
     phone: data.phone,
     passwordHash: data.passwordHash,
     displayName: data.displayName || '学员',
+    invitedBy: data.invitedBy ?? null,
   });
 }
 

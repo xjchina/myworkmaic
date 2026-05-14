@@ -7,6 +7,7 @@ interface RegisterPayload {
   code: string;
   password: string;
   displayName?: string;
+  inviteCode?: string;
 }
 
 interface LoginWithPasswordPayload {
@@ -161,6 +162,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
           code: payload.code,
           password: payload.password,
           displayName: payload.displayName,
+          inviteCode: payload.inviteCode,
         }),
       });
       const data = await res.json();

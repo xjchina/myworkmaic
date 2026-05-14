@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { saveAs } from 'file-saver';
 import { toast } from 'sonner';
 import { useStageStore } from '@/lib/store/stage';
+import { useSubscriptionStore } from '@/lib/store/subscription';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { db, getGeneratedAgentsByStageId } from '@/lib/utils/database';
 import {
@@ -24,10 +25,23 @@ const log = createLogger('ExportClassroom');
 export function useExportClassroom() {
   const [exporting, setExporting] = useState(false);
   const { t } = useI18n();
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
+  const hasExportPermission = subscription?.permissions?.dataExport ?? false;
+
+  useEffect(() => {
+    if (!subscription) {
+      void fetchSubscription();
+    }
+  }, [subscription, fetchSubscription]);
 
   const exportClassroomZip = useCallback(async () => {
     const { stage, scenes } = useStageStore.getState();
     if (!stage?.id || scenes.length === 0) return;
+    if (!hasExportPermission) {
+      toast.error('数据导出为会员专属能力，请先开通会员');
+      return;
+    }
 
     setExporting(true);
     const toastId = toast.loading(t('export.exporting'));
@@ -184,7 +198,7 @@ export function useExportClassroom() {
     } finally {
       setExporting(false);
     }
-  }, [t]);
+  }, [t, hasExportPermission]);
 
   return { exporting, exportClassroomZip };
 }

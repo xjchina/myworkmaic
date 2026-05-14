@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import pptxgen from 'pptxgenjs';
 import tinycolor from 'tinycolor2';
 import { saveAs } from 'file-saver';
@@ -10,6 +10,7 @@ import { useStageStore } from '@/lib/store';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useMediaGenerationStore, isMediaPlaceholder } from '@/lib/store/media-generation';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { useSubscriptionStore } from '@/lib/store/subscription';
 import type {
   Slide,
   PPTElementOutline,
@@ -1072,6 +1073,8 @@ export function useExportPPTX() {
   const [exporting, setExporting] = useState(false);
   const exportingRef = useRef(false);
   const { t } = useI18n();
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
 
   const scenes = useStageStore((s) => s.scenes);
   const stage = useStageStore((s) => s.stage);
@@ -1080,6 +1083,13 @@ export function useExportPPTX() {
 
   const ratioPx2Inch = 96 * (viewportSize / 960);
   const ratioPx2Pt = (96 / 72) * (viewportSize / 960);
+  const hasExportPermission = subscription?.permissions?.dataExport ?? false;
+
+  useEffect(() => {
+    if (!subscription) {
+      void fetchSubscription();
+    }
+  }, [subscription, fetchSubscription]);
 
   const slideScenes = scenes.filter((s) => s.content.type === 'slide');
   const slides = slideScenes.map((s) => (s.content as SlideContent).canvas);
@@ -1088,6 +1098,10 @@ export function useExportPPTX() {
   const withExportGuard = useCallback(
     (action: () => Promise<void>) => {
       if (exportingRef.current || slides.length === 0) return;
+      if (!hasExportPermission) {
+        toast.error('数据导出为会员专属能力，请先开通会员');
+        return;
+      }
       exportingRef.current = true;
       setExporting(true);
       setTimeout(async () => {
@@ -1102,7 +1116,7 @@ export function useExportPPTX() {
         }
       }, 100);
     },
-    [slides.length, t],
+    [slides.length, t, hasExportPermission],
   );
 
   // ── Export PPTX only ──

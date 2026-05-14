@@ -14,6 +14,8 @@ import {
   type QuizSessionRecord,
 } from '@/lib/quiz/persistence';
 import { DEMO_QUIZ_QUESTIONS, DEMO_QUIZ_SUMMARY } from '@/lib/data/demo-data';
+import { trackUsage } from '@/lib/client/usage-tracker';
+import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -26,6 +28,7 @@ function formatTime(ts: number) {
 }
 
 export function QuizWorkbench() {
+  const { checkAndUpgrade, UpgradeModal } = useUpgradeGuard();
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -97,6 +100,10 @@ export function QuizWorkbench() {
   };
 
   const handleGenerateQuiz = async () => {
+    if (!(await checkAndUpgrade('exercise'))) {
+      return;
+    }
+
     if (!pdfFile) {
       setError('\u8bf7\u5148\u4e0a\u4f20 PDF \u6587\u4ef6\u3002');
       return;
@@ -151,6 +158,12 @@ export function QuizWorkbench() {
         questions: extractedQuestions,
       });
       setSavedSessions(nextSessions);
+      await trackUsage({
+        feature: 'exercise',
+        action: 'quiz_generated',
+        subject: pdfFile.name,
+        durationSeconds: extractedQuestions.length,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '\u751f\u6210\u5931\u8d25');
     } finally {
@@ -227,12 +240,14 @@ export function QuizWorkbench() {
                 <span className="meta-short">简答 ×1</span>
                 <span className="meta-total">共 {DEMO_QUIZ_QUESTIONS.reduce((s, q) => s + (q.points ?? 1), 0)} 分</span>
               </div>
-              <button type="button" className="btn-demo-quiz" onClick={() => {
+              <button type="button" className="btn-demo-quiz" onClick={async () => {
+                if (!(await checkAndUpgrade('exercise'))) return;
                 const nid = `quiz-demo-${nanoid(8)}`;
                 const nsid = `quiz-session-demo-${nanoid(8)}`;
                 setQuestions(DEMO_QUIZ_QUESTIONS);
                 setSceneId(nid); setSceneTitle('内置示例练习'); setActiveSessionId(nsid); setSummary(DEMO_QUIZ_SUMMARY);
                 setSavedSessions(saveQuizSession({ id: nsid, sceneId: nid, sourceName: '内置示例练习', summary: DEMO_QUIZ_SUMMARY, questionCount: DEMO_QUIZ_QUESTIONS.length, questions: DEMO_QUIZ_QUESTIONS }));
+                void trackUsage({ feature: 'exercise', action: 'quiz_generated', subject: '内置示例练习', durationSeconds: DEMO_QUIZ_QUESTIONS.length });
               }}>开始练习</button>
             </section>
             <section className={`upload-section ${dragover ? 'dragover' : ''}`}
@@ -768,6 +783,7 @@ export function QuizWorkbench() {
           }
         }
       `}</style>
+      <UpgradeModal />
     </div>
   );
 }

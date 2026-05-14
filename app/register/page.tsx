@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
 import { useSessionStore } from '@/lib/store/session';
@@ -12,6 +12,10 @@ function normalizePhone(phone: string): string {
 
 function isValidPhone(phone: string): boolean {
   return /^1\d{10}$/.test(phone);
+}
+
+function normalizeInviteCode(code: string): string {
+  return code.trim().toUpperCase();
 }
 
 function getPhoneError(phone: string): string | null {
@@ -61,6 +65,7 @@ function LoadingDots() {
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
   const sendOtp = useSessionStore((s) => s.sendOtp);
   const registerWithPhone = useSessionStore((s) => s.registerWithPhone);
@@ -77,6 +82,7 @@ export default function RegisterPage() {
   const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const normalizedPhone = normalizePhone(phone);
+  const inviteCodeFromUrl = normalizeInviteCode(searchParams.get('invite') || '');
   const phoneReady = isValidPhone(normalizedPhone);
   const phoneError = getPhoneError(normalizedPhone);
   const passwordStrength = getPasswordStrength(password);
@@ -120,7 +126,13 @@ export default function RegisterPage() {
   const handleRegister = useCallback(async () => {
     setSubmitting(true);
     setNotice(null);
-    const result = await registerWithPhone({ phone: normalizedPhone, code, password, displayName: displayNameInput });
+    const result = await registerWithPhone({
+      phone: normalizedPhone,
+      code,
+      password,
+      displayName: displayNameInput,
+      inviteCode: inviteCodeFromUrl || undefined,
+    });
     setSubmitting(false);
     if (result.success) {
       setNotice({ text: result.message || '注册成功！即将跳转...', type: 'success' });
@@ -128,7 +140,7 @@ export default function RegisterPage() {
     } else {
       setNotice({ text: result.message || '注册失败', type: 'error' });
     }
-  }, [normalizedPhone, code, password, displayNameInput, registerWithPhone, router]);
+  }, [normalizedPhone, code, password, displayNameInput, inviteCodeFromUrl, registerWithPhone, router]);
 
   return (
     <AppShell activeKey="register" title="注册" description="手机验证码注册，设置密码">
@@ -167,6 +179,10 @@ export default function RegisterPage() {
               />
             </div>
           </div>
+
+          {inviteCodeFromUrl ? (
+            <div className="invite-code-tip">已应用邀请码：{inviteCodeFromUrl}</div>
+          ) : null}
 
           <div className="field">
             <label>验证码</label>
@@ -229,7 +245,7 @@ export default function RegisterPage() {
           {notice && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
 
           <div className="auth-footer">
-            已有账号？<Link href="/login" className="auth-link">去登录 →</Link>
+            已有账号？<Link href={inviteCodeFromUrl ? `/login?invite=${inviteCodeFromUrl}` : '/login'} className="auth-link">去登录 →</Link>
           </div>
         </div>
       </div>
@@ -261,6 +277,16 @@ export default function RegisterPage() {
         .input-clear { border: none; background: #e2e8f0; color: #64748b; width: 24px; height: 24px; border-radius: 50%; font-size: 12px; cursor: pointer; margin-right: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .input-clear:hover { background: #cbd5e1; }
         .field-error { margin: 6px 0 0; font-size: 12px; color: #ef4444; }
+        .invite-code-tip {
+          margin: 2px 0 12px;
+          padding: 8px 12px;
+          border: 1px solid #c7d2fe;
+          border-radius: 10px;
+          background: #eef2ff;
+          color: #3730a3;
+          font-size: 13px;
+          font-weight: 600;
+        }
         .grow { flex: 1; }
         .input-row { display: flex; gap: 8px; align-items: stretch; }
         .code-btn { height: 44px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; color: #4f46e5; font-size: 13px; font-weight: 600; padding: 0 14px; cursor: pointer; white-space: nowrap; transition: all 0.2s; flex-shrink: 0; }

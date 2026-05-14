@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
   normalizePhone,
@@ -9,11 +10,23 @@ import {
   hashPassword,
   setAuthCookie,
   updateLastLoginAt,
+  findUserByInviteCode,
 } from '@/lib/server/auth';
-import { randomUUID } from 'crypto';
+
+type RegisterBody = {
+  phone?: string;
+  code?: string;
+  password?: string;
+  displayName?: string;
+  inviteCode?: string;
+};
+
+function normalizeInviteCode(code: string): string {
+  return code.trim().toUpperCase();
+}
 
 export async function POST(request: Request) {
-  let body: { phone?: string; code?: string; password?: string; displayName?: string };
+  let body: RegisterBody;
   try {
     body = await request.json();
   } catch {
@@ -24,28 +37,35 @@ export async function POST(request: Request) {
   const code = body.code || '';
   const password = body.password || '';
   const displayName = body.displayName?.trim() || '学员';
+  const inviteCode = normalizeInviteCode(body.inviteCode || '');
 
   if (!isValidPhone(phone)) {
     return apiError('INVALID_REQUEST', 400, '请输入有效的 11 位手机号。');
   }
 
   if (!isValidPassword(password)) {
-    return apiError('INVALID_REQUEST', 400, '密码至少 8 位，并包含大小写字母和数字。');
+    return apiError('INVALID_REQUEST', 400, '密码至少 8 位，且需包含大小写字母和数字。');
   }
 
-  // Check if phone already registered
   const existing = await findUserByPhone(phone);
   if (existing) {
     return apiError('INVALID_REQUEST', 409, '该手机号已注册，请直接登录。');
   }
 
-  // Verify OTP
   const otpResult = await verifyOtpCode(phone, code);
   if (!otpResult.success) {
     return apiError('INVALID_REQUEST', 400, otpResult.message);
   }
 
-  // Create user
+  let invitedBy: string | null = null;
+  if (inviteCode) {
+    const inviter = await findUserByInviteCode(inviteCode);
+    if (!inviter) {
+      return apiError('INVALID_REQUEST', 400, '邀请码无效，请检查后重试。');
+    }
+    invitedBy = inviter.id;
+  }
+
   const userId = randomUUID();
   const passwordHash = await hashPassword(password);
 
@@ -54,9 +74,9 @@ export async function POST(request: Request) {
     phone,
     passwordHash,
     displayName,
+    invitedBy,
   });
 
-  // Set auth cookie (auto-login after registration)
   await setAuthCookie(userId);
   await updateLastLoginAt(userId);
 

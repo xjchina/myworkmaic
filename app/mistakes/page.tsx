@@ -14,8 +14,23 @@ import {
   type MistakeNotebookEntry,
 } from '@/lib/quiz/persistence';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
+import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
+import { useSubscriptionStore } from '@/lib/store/subscription';
 
 const COMMON_SUBJECTS = ['数学', '语文', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
+
+function filterEntriesByHistory(entries: MistakeNotebookEntry[], dataHistory: 'today' | 'week' | 'full') {
+  if (dataHistory === 'full') return entries;
+
+  const now = Date.now();
+  const cutoffMs = dataHistory === 'today' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+  const cutoff = now - cutoffMs;
+
+  return entries.filter((item) => {
+    const ts = Number(item.updatedAt || 0);
+    return ts >= cutoff;
+  });
+}
 
 function toCsv(entries: MistakeNotebookEntry[]): string {
   const header = [
@@ -36,6 +51,10 @@ function toCsv(entries: MistakeNotebookEntry[]): string {
 
 export default function MistakesPage() {
   const { isLoggedIn } = useAuthGuard();
+  const subscription = useSubscriptionStore((s) => s.subscription);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
+  const { forceShow, UpgradeModal } = useUpgradeGuard();
+  const hasExportPermission = subscription?.permissions?.dataExport ?? false;
   const [entries, setEntries] = useState<MistakeNotebookEntry[]>([]);
   const [filterSubject, setFilterSubject] = useState<string | null>(null); // null = all
   const [editingSubject, setEditingSubject] = useState<string | null>(null); // sceneId being edited
@@ -55,8 +74,14 @@ export default function MistakesPage() {
   const [removingKeys, setRemovingKeys] = useState<Set<string>>(new Set());
 
   const reload = useCallback(() => {
-    setEntries(readMistakeNotebookEntries());
-  }, []);
+    const allEntries = readMistakeNotebookEntries();
+    const historyPolicy = subscription?.permissions?.dataHistory ?? 'today';
+    setEntries(filterEntriesByHistory(allEntries, historyPolicy));
+  }, [subscription?.permissions?.dataHistory]);
+
+  useEffect(() => {
+    void fetchSubscription();
+  }, [fetchSubscription]);
 
   useEffect(() => {
     const initTimer = window.setTimeout(() => reload(), 0);
@@ -248,6 +273,11 @@ export default function MistakesPage() {
   };
 
   const downloadNotebook = () => {
+    if (!hasExportPermission) {
+      forceShow('export');
+      return;
+    }
+
     if (entries.length === 0) return;
     const csv = toCsv(entries);
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -551,6 +581,7 @@ export default function MistakesPage() {
           </div>
         </div>
       )}
+      <UpgradeModal />
 
       <style jsx>{`
         /* ─── Layout ─────────────────────────────────────── */

@@ -1,6 +1,7 @@
 ﻿import Link from 'next/link';
 import type { CSSProperties, ReactNode } from 'react';
 import { PersonalCenter } from './personal-center';
+import { UsageQuotaBadge } from '@/components/membership/usage-quota-badge';
 import styles from './app-shell.module.css';
 
 export type NavKey =
@@ -73,6 +74,15 @@ export function AppShell({
   actions?: ReactNode;
   children: ReactNode;
 }) {
+  const quotaFeature =
+    activeKey === 'classroom'
+      ? 'classroom'
+      : activeKey === 'exercise'
+        ? 'exercise'
+        : activeKey === 'knowledge'
+          ? 'knowledge'
+          : null;
+
   return (
     <div className={styles.root}>
       <header className={styles.topbar}>
@@ -127,9 +137,10 @@ export function AppShell({
 
       <main className={styles.main}>
         <header className={styles.header}>
-          <div>
+          <div className={styles.headerInfo}>
             <h1 className={styles.title}>{title}</h1>
             {description ? <p className={styles.desc}>{description}</p> : null}
+            {quotaFeature ? <UsageQuotaBadge feature={quotaFeature} /> : null}
           </div>
           {actions ? <div className={styles.headerActions}>{actions}</div> : null}
         </header>

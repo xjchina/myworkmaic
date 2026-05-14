@@ -1,16 +1,17 @@
 'use client';
 
-import { AppShell } from '@/components/shell/app-shell';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AppShell } from '@/components/shell/app-shell';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 const subjects = [
-  { icon: '📐', name: '数学' },
-  { icon: '⚡', name: '物理' },
+  { icon: '🧮', name: '数学' },
+  { icon: '⚛️', name: '物理' },
   { icon: '🧪', name: '化学' },
-  { icon: '📋', name: '英语' },
+  { icon: '📝', name: '英语' },
   { icon: '🌍', name: '地理' },
-  { icon: '📍', name: '生物' },
+  { icon: '🧬', name: '生物' },
   { icon: '🏛️', name: '政治' },
   { icon: '📜', name: '历史' },
 ];
@@ -18,17 +19,24 @@ const subjects = [
 export default function KnowledgeSelectPage() {
   const { isLoggedIn } = useAuthGuard();
   const router = useRouter();
+  const [customSubject, setCustomSubject] = useState('');
+
+  const handleEnterKnowledge = (subjectName?: string) => {
+    const normalized = subjectName?.trim();
+    if (normalized) {
+      router.push(`/knowledge-chat?subject=${encodeURIComponent(normalized)}`);
+      return;
+    }
+    router.push('/knowledge-chat');
+  };
+
   if (!isLoggedIn) return null;
 
   return (
-    <AppShell
-      activeKey="knowledge"
-      title="🌌 知识宇宙"
-      description="选择学科，开始今天的知识梳理"
-    >
+    <AppShell activeKey="knowledge" title="🌌 知识宇宙" description="选择学科，开始今天的知识梳理">
       <div className="hero">
         <h2>开始今天的知识梳理</h2>
-        <p>选择学科，用自己的话告诉AI今天学了什么</p>
+        <p>选择学科，用自己的话告诉 AI 今天学了什么</p>
       </div>
 
       <div className="subject-grid">
@@ -36,7 +44,9 @@ export default function KnowledgeSelectPage() {
           <button
             key={s.name}
             className="subject-card"
-            onClick={() => router.push(`/knowledge-chat?subject=${encodeURIComponent(s.name)}`)}
+            onClick={() => {
+              handleEnterKnowledge(s.name);
+            }}
           >
             <div className="subject-icon">{s.icon}</div>
             <div className="subject-name">{s.name}</div>
@@ -46,8 +56,17 @@ export default function KnowledgeSelectPage() {
 
       <div className="custom-input">
         <h3>或输入其他学科</h3>
-        <input placeholder="例如：地理、历史、政治..." />
-        <button className="btn-start" onClick={() => router.push('/knowledge-chat')}>
+        <input
+          value={customSubject}
+          onChange={(e) => setCustomSubject(e.target.value)}
+          placeholder="例如：地理、历史、政治..."
+        />
+        <button
+          className="btn-start"
+          onClick={() => {
+            handleEnterKnowledge(customSubject);
+          }}
+        >
           开始梳理 →
         </button>
       </div>

@@ -55,6 +55,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useDraftCache } from '@/lib/hooks/use-draft-cache';
 import { SpeechButton } from '@/components/audio/speech-button';
 import { useImportClassroom } from '@/lib/import/use-import-classroom';
+import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
+import { UsageQuotaBadge } from '@/components/membership/usage-quota-badge';
 
 const log = createLogger('Home');
 
@@ -154,6 +156,7 @@ function HomePage() {
 
   const [themeOpen, setThemeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { checkAndUpgrade, UpgradeModal } = useUpgradeGuard();
   const [classrooms, setClassrooms] = useState<StageListItem[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, Slide>>({});
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -287,6 +290,10 @@ function HomePage() {
   };
 
   const handleGenerate = async () => {
+    if (!(await checkAndUpgrade('classroom'))) {
+      return;
+    }
+
     // Validate setup before proceeding
     if (!currentModelId) {
       showSetupToast(
@@ -489,6 +496,7 @@ function HomePage() {
         }}
         initialSection={settingsSection}
       />
+      <UpgradeModal />
 
       {/* ═══ Background Decor ═══ */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -536,6 +544,15 @@ function HomePage() {
         >
           {t('home.slogan')}
         </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3 }}
+          className="mb-5 w-full"
+        >
+          <UsageQuotaBadge feature="classroom" />
+        </motion.div>
 
         {/* ── Unified input area ── */}
         <motion.div

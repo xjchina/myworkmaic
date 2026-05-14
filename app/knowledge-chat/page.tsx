@@ -5,6 +5,9 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
+import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
+import { trackUsage } from '@/lib/client/usage-tracker';
+import { extractKeywordsFromText, upsertKnowledgeTreeNode } from '@/lib/knowledge/tree-persistence';
 
 // ─── Types ──────────────────────────────────────────────────
 type StepField =
@@ -17,6 +20,11 @@ type Mode = 'dialog' | 'form';
 interface ChatMessage {
   role: 'assistant' | 'user';
   content: string;
+}
+
+function parseErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) return error.message;
+  return fallback;
 }
 
 const STEP_FIELDS: { key: StepField; label: string; placeholder: string; step: number }[] = [
@@ -44,9 +52,9 @@ function LoadingDots() {
 
 // ─── Start Screen ──────────────────────────────────────────
 function StartScreen({
-  subject, subjectIcon, chapter, setChapter, onStart,
+  subjectIcon, chapter, setChapter, onStart,
 }: {
-  subject: string; subjectIcon: string;
+  subjectIcon: string;
   chapter: string; setChapter: (v: string) => void;
   onStart: (mode: Mode) => void;
 }) {
@@ -170,8 +178,7 @@ function AnalysisResult({ content, onRedo }: { content: string; onRedo: () => vo
     return '';
   };
   const clean = (s: string) => {
-    const emoji = getEmoji(s);
-    let t = s.replace(/^🔗/, '').replace(/^📚/, '').replace(/^🔑/, '').replace(/^⚠️/, '').replace(/^📝/, '').replace(/^✅/, '').replace(/^💪/, '').trim();
+    const t = s.replace(/^🔗/, '').replace(/^📚/, '').replace(/^🔑/, '').replace(/^⚠️/, '').replace(/^📝/, '').replace(/^✅/, '').replace(/^💪/, '').trim();
     return t;
   };
 
@@ -243,6 +250,7 @@ export default function Page() {
 
 function RecallPageContent() {
   const { isLoggedIn } = useAuthGuard();
+  const { checkAndUpgrade, UpgradeModal } = useUpgradeGuard();
   const searchParams = useSearchParams();
   const subject = searchParams.get('subject') || '数学';
   const subjectIcon = SUBJECT_ICONS[subject] || '📚';
@@ -274,14 +282,37 @@ function RecallPageContent() {
   const [ocrPreview, setOcrPreview] = useState<Record<string, string> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const saveToKnowledgeTree = useCallback(
+    (payload: { summary: string; sourceMode: 'dialog' | 'form'; keywordSeed?: string[] }) => {
+      const mergedKeywords = Array.from(new Set((payload.keywordSeed || []).filter(Boolean)));
+      upsertKnowledgeTreeNode({
+        subject,
+        chapter: chapter.trim() || '未命名章节',
+        summary: payload.summary,
+        keywords: mergedKeywords,
+        sourceMode: payload.sourceMode,
+        status: 'doing',
+      });
+    },
+    [chapter, subject],
+  );
+
   // ─── Scroll chat to bottom ──────────────────
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   // ─── Start handler ──────────────────────────
-  const handleStart = useCallback((selectedMode: Mode) => {
+  const handleStart = useCallback(async (selectedMode: Mode) => {
     if (!chapter.trim()) return;
+    if (!(await checkAndUpgrade('knowledge'))) return;
+
+    await trackUsage({
+      feature: 'knowledge',
+      action: 'knowledge_start',
+      subject: subject || '通用',
+    });
+
     setMode(selectedMode);
     setStarted(true);
 
@@ -311,7 +342,7 @@ function RecallPageContent() {
       setFormData({});
       setOcrPreview(null);
     }
-  }, [chapter]);
+  }, [chapter, checkAndUpgrade, subject]);
 
   // ─── Dialog: send message ───────────────────
   const handleDialogSend = useCallback(async () => {
@@ -344,17 +375,28 @@ function RecallPageContent() {
         // AI produced the final summary
         setDialogDone(true);
         setDialogResult(aiContent);
+        const userKeywords = extractKeywordsFromText(
+          updated
+            .filter((item) => item.role === 'user')
+            .map((item) => item.content)
+            .join(','),
+        );
+        saveToKnowledgeTree({
+          summary: aiContent,
+          sourceMode: 'dialog',
+          keywordSeed: userKeywords,
+        });
         setMessages((prev) => [...prev, { role: 'assistant', content: '✅ 分析完成！请查看下方的总结报告 👇' }]);
       } else {
         setMessages((prev) => [...prev, { role: 'assistant', content: aiContent }]);
         setDialogStep((prev) => Math.min(prev + 1, 5));
       }
-    } catch (e: any) {
-      setMessages((prev) => [...prev, { role: 'assistant', content: `❌ 出错了：${e.message}，请重试` }]);
+    } catch (e: unknown) {
+      setMessages((prev) => [...prev, { role: 'assistant', content: `❌ 出错了：${parseErrorMessage(e, '请求失败')}，请重试` }]);
     } finally {
       setDialogLoading(false);
     }
-  }, [dialogInput, dialogLoading, messages, chapter, subject]);
+  }, [dialogInput, dialogLoading, messages, chapter, subject, saveToKnowledgeTree]);
 
   // ─── Form: submit ────────────────────────────
   const handleFormSubmit = useCallback(async () => {
@@ -370,12 +412,20 @@ function RecallPageContent() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setFormResult(data.content);
-    } catch (e: any) {
-      setFormError(e.message || '请求失败');
+      const keywordSeed = extractKeywordsFromText(
+        [formData.step1, formData.step2Focus, formData.step3, formData.step5].filter(Boolean).join(','),
+      );
+      saveToKnowledgeTree({
+        summary: data.content,
+        sourceMode: 'form',
+        keywordSeed,
+      });
+    } catch (e: unknown) {
+      setFormError(parseErrorMessage(e, '请求失败'));
     } finally {
       setFormLoading(false);
     }
-  }, [chapter, formData]);
+  }, [chapter, formData, saveToKnowledgeTree, subject]);
 
   // ─── OCR: upload photo ───────────────────────
   const handlePhotoUpload = useCallback(async (file: File) => {
@@ -409,8 +459,8 @@ function RecallPageContent() {
       } else {
         throw new Error(data.error || 'OCR识别失败');
       }
-    } catch (e: any) {
-      alert('OCR识别出错：' + e.message);
+    } catch (e: unknown) {
+      alert('OCR识别出错：' + parseErrorMessage(e, '未知错误'));
     } finally {
       setOcrLoading(false);
     }
@@ -436,7 +486,8 @@ function RecallPageContent() {
       <AppShell activeKey="knowledge" title="🌌 知识宇宙" description={`${subjectIcon} ${subject} · 白纸回忆法`}
         actions={<Link href="/knowledge-select" style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 10, background: "#fff", border: "1px solid #e2e8f0", color: "#334155", fontSize: 13, fontWeight: 600, textDecoration: "none", cursor: "pointer", transition: "all 0.15s" }}>← 返回</Link>}
       >
-        <StartScreen subject={subject} subjectIcon={subjectIcon} chapter={chapter} setChapter={setChapter} onStart={handleStart} />
+        <StartScreen subjectIcon={subjectIcon} chapter={chapter} setChapter={setChapter} onStart={handleStart} />
+        <UpgradeModal />
       </AppShell>
     );
   }
@@ -555,6 +606,7 @@ function RecallPageContent() {
 
           @media (max-width: 840px) { .dialog-sidebar { display: none; } }
         `}</style>
+        <UpgradeModal />
       </AppShell>
     );
   }
@@ -735,6 +787,7 @@ function RecallPageContent() {
         .error-area p { color: #991b1b; margin: 0 0 12px; }
         .btn-retry { padding: 8px 24px; border: none; border-radius: 10px; background: #dc2626; color: #fff; font-size: 14px; cursor: pointer; font-family: inherit; }
       `}</style>
+      <UpgradeModal />
     </AppShell>
   );
 }

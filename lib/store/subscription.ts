@@ -9,8 +9,8 @@ export interface SubscriptionPermissions {
   knowledgeSteps: number;
   exerciseDaily: number;
   dataExport: boolean;
-  analytics: string;
-  dataHistory: string;
+  analytics: 'day' | 'week' | 'full';
+  dataHistory: 'today' | 'week' | 'full';
 }
 
 export interface SubscriptionData {
@@ -274,8 +274,9 @@ export const useSubscriptionStore = create<SubscriptionState>()((set, get) => ({
     try {
       const res = await fetch('/api/share/generate-link', { method: 'POST' });
       const data = await res.json();
-      if (data.success && data.data?.link) {
-        return { success: true, link: data.data.link };
+      const link = data?.data?.link || data?.data?.inviteUrl;
+      if (data.success && link) {
+        return { success: true, link };
       }
       return { success: false, message: data.error || '生成失败' };
     } catch {
