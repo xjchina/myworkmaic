@@ -8,16 +8,22 @@ interface RegisterPayload {
   password: string;
   displayName?: string;
   inviteCode?: string;
+  captchaId?: string;
+  captchaAnswer?: string;
 }
 
 interface LoginWithPasswordPayload {
   phone: string;
   password: string;
+  captchaId?: string;
+  captchaAnswer?: string;
 }
 
 interface LoginWithCodePayload {
   phone: string;
   code: string;
+  captchaId?: string;
+  captchaAnswer?: string;
 }
 
 interface SessionActionResult {
@@ -25,17 +31,6 @@ interface SessionActionResult {
   message?: string;
   debugCode?: string;
   waitSeconds?: number;
-}
-
-interface UserData {
-  id: string;
-  phone: string;
-  displayName: string;
-  avatar: string | null;
-  createdAt: number;
-  lastLoginAt: number;
-  subscriptionType?: string;
-  subscriptionExpiresAt?: string | null;
 }
 
 interface SessionState {
@@ -50,7 +45,11 @@ interface SessionState {
   /** Initialize session from server cookie — call once on app load */
   refreshSession: () => Promise<void>;
   /** Send OTP code to phone */
-  sendOtp: (phone: string) => Promise<SessionActionResult>;
+  sendOtp: (payload: {
+    phone: string;
+    captchaId?: string;
+    captchaAnswer?: string;
+  }) => Promise<SessionActionResult>;
   /** Register with phone + code + password */
   registerWithPhone: (payload: RegisterPayload) => Promise<SessionActionResult>;
   /** Login with phone + password */
@@ -69,9 +68,30 @@ function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '');
 }
 
+function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server-render';
+
+  const key = 'openmaic_device_id';
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+
+  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  window.localStorage.setItem(key, random);
+  return random;
+}
+
+function buildAuthHeaders(): HeadersInit {
+  return {
+    'Content-Type': 'application/json',
+    'x-device-id': getOrCreateDeviceId(),
+  };
+}
+
 // ==================== Store ====================
 
-export const useSessionStore = create<SessionState>()((set, get) => ({
+export const useSessionStore = create<SessionState>()((set, _get) => ({
   isLoggedIn: false,
   displayName: '',
   userPhone: '',
@@ -126,13 +146,17 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     }
   },
 
-  sendOtp: async (phoneInput) => {
-    const phone = normalizePhone(phoneInput);
+  sendOtp: async (payload) => {
+    const phone = normalizePhone(payload.phone);
     try {
       const res = await fetch('/api/auth/send-code', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({
+          phone,
+          captchaId: payload.captchaId,
+          captchaAnswer: payload.captchaAnswer,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -156,13 +180,15 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders(),
         body: JSON.stringify({
           phone: normalizePhone(payload.phone),
           code: payload.code,
           password: payload.password,
           displayName: payload.displayName,
           inviteCode: payload.inviteCode,
+          captchaId: payload.captchaId,
+          captchaAnswer: payload.captchaAnswer,
         }),
       });
       const data = await res.json();
@@ -185,11 +211,13 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders(),
         body: JSON.stringify({
           phone: normalizePhone(payload.phone),
           password: payload.password,
           method: 'password',
+          captchaId: payload.captchaId,
+          captchaAnswer: payload.captchaAnswer,
         }),
       });
       const data = await res.json();
@@ -214,11 +242,13 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildAuthHeaders(),
         body: JSON.stringify({
           phone: normalizePhone(payload.phone),
           code: payload.code,
           method: 'code',
+          captchaId: payload.captchaId,
+          captchaAnswer: payload.captchaAnswer,
         }),
       });
       const data = await res.json();
@@ -257,7 +287,7 @@ export const useSessionStore = create<SessionState>()((set, get) => ({
     });
   },
 
-  isPhoneRegistered: async (phoneInput) => {
+  isPhoneRegistered: async (_phoneInput) => {
     // We'll check via a lightweight approach — attempt login with a dummy code
     // and see if we get "not registered" vs "wrong code"
     // For now, always return false (registration check happens server-side on submit)

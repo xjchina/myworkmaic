@@ -8,55 +8,84 @@ import {
   setAuthCookie,
   updateLastLoginAt,
 } from '@/lib/server/auth';
+import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
+
+type LoginBody = {
+  phone?: string;
+  code?: string;
+  password?: string;
+  method?: string;
+  captchaId?: string;
+  captchaAnswer?: string;
+};
 
 export async function POST(request: Request) {
-  let body: { phone?: string; code?: string; password?: string; method?: string };
+  let body: LoginBody;
   try {
     body = await request.json();
   } catch {
-    return apiError('INVALID_REQUEST', 400, 'Invalid JSON body');
+    return apiError('INVALID_REQUEST', 400, '请求体 JSON 格式不正确');
   }
 
   const phone = normalizePhone(body.phone || '');
-  const method = body.method || 'code'; // 'code' or 'password'
+  const method = body.method || 'code';
 
   if (!isValidPhone(phone)) {
+    await recordAuthResult({ request, action: 'login', success: false, reason: 'invalid_phone' });
     return apiError('INVALID_REQUEST', 400, '请输入有效的 11 位手机号。');
   }
 
-  // Find user
+  const security = await enforceAuthSecurity({ request, action: 'login', phone });
+  if (!security.ok) {
+    await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'rate_or_ban' });
+    return apiError('INVALID_REQUEST', 429, security.message || '登录受限，请稍后重试。');
+  }
+
+  const captcha = await verifyCaptcha({
+    request,
+    captchaId: body.captchaId,
+    captchaAnswer: body.captchaAnswer,
+  });
+  if (!captcha.ok) {
+    await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'captcha_failed' });
+    return apiError('INVALID_REQUEST', 400, captcha.message || '图形验证码校验失败。');
+  }
+
   const user = await findUserByPhone(phone);
   if (!user) {
+    await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'user_not_found' });
     return apiError('INVALID_REQUEST', 404, '该手机号尚未注册，请先完成首次注册。');
   }
 
   if (method === 'password') {
-    // Password login
     const password = body.password || '';
     if (!password) {
+      await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'password_empty' });
       return apiError('INVALID_REQUEST', 400, '请输入密码。');
     }
 
     const valid = await verifyPassword(password, user.passwordHash);
     if (!valid) {
+      await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'password_incorrect' });
       return apiError('INVALID_REQUEST', 401, '密码错误，请重试。');
     }
   } else {
-    // OTP code login
     const code = body.code || '';
     if (!code) {
+      await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'otp_empty' });
       return apiError('INVALID_REQUEST', 400, '请输入验证码。');
     }
 
     const otpResult = await verifyOtpCode(phone, code);
     if (!otpResult.success) {
+      await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'otp_invalid' });
       return apiError('INVALID_REQUEST', 401, otpResult.message);
     }
   }
 
-  // Set auth cookie
   await setAuthCookie(user.id);
   await updateLastLoginAt(user.id);
+  await recordAuthResult({ request, action: 'login', phone, success: true });
 
   return apiSuccess({
     message: `欢迎回来，${user.displayName}。`,

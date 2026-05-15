@@ -5,6 +5,7 @@ import {
   int,
   boolean,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/mysql-core';
 
 /**
@@ -36,6 +37,51 @@ export const otpTickets = mysqlTable('otp_tickets', {
   lastSentAt: timestamp('last_sent_at').notNull(),
   attempts: int('attempts').notNull().default(0),
 });
+
+/**
+ * Captcha tickets table - one-time captcha challenges
+ */
+export const captchaTickets = mysqlTable('captcha_tickets', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  answer: varchar('answer', { length: 8 }).notNull(),
+  issuedIp: varchar('issued_ip', { length: 64 }).notNull(),
+  issuedDevice: varchar('issued_device', { length: 128 }).notNull(),
+  attempts: int('attempts').notNull().default(0),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+/**
+ * Auth events table - audit and rate-limiting counters
+ */
+export const authEvents = mysqlTable('auth_events', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  action: varchar('action', { length: 32 }).notNull(), // send_code | login | register | captcha
+  scope: varchar('scope', { length: 16 }).notNull(), // ip | device | phone
+  identifier: varchar('identifier', { length: 128 }).notNull(),
+  success: boolean('success').notNull(),
+  reason: varchar('reason', { length: 64 }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  scopeIdentifierIdx: index('auth_events_scope_identifier_idx').on(table.scope, table.identifier),
+  actionCreatedIdx: index('auth_events_action_created_idx').on(table.action, table.createdAt),
+}));
+
+/**
+ * Auth bans table - temporary lock for suspicious behavior
+ */
+export const authBans = mysqlTable('auth_bans', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  scope: varchar('scope', { length: 16 }).notNull(), // ip | device | phone
+  identifier: varchar('identifier', { length: 128 }).notNull(),
+  reason: varchar('reason', { length: 128 }).notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  scopeIdentifierUnique: uniqueIndex('auth_bans_scope_identifier_unique').on(table.scope, table.identifier),
+  expiresAtIdx: index('auth_bans_expires_at_idx').on(table.expiresAt),
+}));
 
 /**
  * Subscriptions table — tracks each subscription period per user

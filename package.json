@@ -24,7 +24,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx lib/db/seed.ts"
+    "db:seed": "tsx lib/db/seed.ts",
+    "db:ensure-auth-security": "node scripts/ensure-auth-security-tables.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.71",
