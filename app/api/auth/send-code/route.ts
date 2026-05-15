@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { normalizePhone, isValidPhone, createOtpTicket } from '@/lib/server/auth';
 
@@ -17,11 +18,21 @@ export async function POST(request: Request) {
   const result = await createOtpTicket(phone);
 
   if (!result.success) {
-    return apiError('INVALID_REQUEST', 429, result.message);
+    return NextResponse.json(
+      {
+        success: false,
+        errorCode: 'INVALID_REQUEST',
+        error: result.message,
+        ...(typeof result.waitSeconds === 'number' ? { waitSeconds: result.waitSeconds } : {}),
+      },
+      { status: 429 },
+    );
   }
 
   return apiSuccess({
     message: result.message,
-    debugCode: result.debugCode,
+    ...(process.env.NODE_ENV !== 'production' && result.debugCode
+      ? { debugCode: result.debugCode }
+      : {}),
   });
 }

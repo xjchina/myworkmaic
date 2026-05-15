@@ -27,6 +27,17 @@ function parseErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function extractDialogStepFromText(text: string): number | null {
+  if (!text) return null;
+  const tagged = text.match(/\[STEP\s*:\s*([1-5])\]/i);
+  if (!tagged) return null;
+  return Number(tagged[1]);
+}
+
+function looksLikeDialogSummary(content: string): boolean {
+  return content.length > 160 && /(总结|复盘|方法|易错|知识点)/.test(content);
+}
+
 const STEP_FIELDS: { key: StepField; label: string; placeholder: string; step: number }[] = [
   { key: 'step1',            label: '核心概念',     placeholder: '例：函数、定义域、值域', step: 1 },
   { key: 'step2Mistake',     label: '易错点',       placeholder: '例：忘记考虑定义域',     step: 2 },
@@ -325,14 +336,20 @@ function RecallPageContent() {
       fetch('/api/knowledge/recall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapter, subject, dialogueHistory: [] }),
+        body: JSON.stringify({ chapter, subject, dialogueHistory: [], currentStep: 1 }),
       })
         .then((r) => r.json())
         .then((data) => {
-          setMessages([{ role: 'assistant', content: data.content || '让我们开始吧！今天学了什么？' }]);
+          const firstContent = data.content || '让我们开始吧！今天学了什么？';
+          setMessages([{ role: 'assistant', content: firstContent }]);
+          const detectedStep = typeof data.step === 'number' ? data.step : extractDialogStepFromText(firstContent);
+          if (detectedStep) {
+            setDialogStep(Math.min(Math.max(detectedStep - 1, 0), 4));
+          }
         })
         .catch(() => {
-          setMessages([{ role: 'assistant', content: `📝 第1步：今天学的核心概念是什么？写1-3个关键词。` }]);
+          setMessages([{ role: 'assistant', content: '📝 第1步：今天学的核心概念是什么？写2-3个关键词。' }]);
+          setDialogStep(0);
         })
         .finally(() => setDialogLoading(false));
     } else {
@@ -363,13 +380,18 @@ function RecallPageContent() {
       const res = await fetch('/api/knowledge/recall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chapter, subject, dialogueHistory }),
+        body: JSON.stringify({
+          chapter,
+          subject,
+          dialogueHistory,
+          currentStep: Math.min(dialogStep + 1, 5),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
       const aiContent = data.content || '';
-      const hasSummary = /[📚🔑⚠️📝🔗✅💪]/.test(aiContent) && aiContent.length > 100;
+      const hasSummary = typeof data.isFinal === 'boolean' ? data.isFinal : looksLikeDialogSummary(aiContent);
 
       if (hasSummary) {
         // AI produced the final summary
@@ -389,14 +411,17 @@ function RecallPageContent() {
         setMessages((prev) => [...prev, { role: 'assistant', content: '✅ 分析完成！请查看下方的总结报告 👇' }]);
       } else {
         setMessages((prev) => [...prev, { role: 'assistant', content: aiContent }]);
-        setDialogStep((prev) => Math.min(prev + 1, 5));
+        const detectedStep = typeof data.step === 'number' ? data.step : extractDialogStepFromText(aiContent);
+        if (detectedStep) {
+          setDialogStep(Math.min(Math.max(detectedStep - 1, 0), 4));
+        }
       }
     } catch (e: unknown) {
       setMessages((prev) => [...prev, { role: 'assistant', content: `❌ 出错了：${parseErrorMessage(e, '请求失败')}，请重试` }]);
     } finally {
       setDialogLoading(false);
     }
-  }, [dialogInput, dialogLoading, messages, chapter, subject, saveToKnowledgeTree]);
+  }, [dialogInput, dialogLoading, messages, chapter, subject, dialogStep, saveToKnowledgeTree]);
 
   // ─── Form: submit ────────────────────────────
   const handleFormSubmit = useCallback(async () => {

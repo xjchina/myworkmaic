@@ -59,6 +59,7 @@ export default function KnowledgeTreePage() {
   const [manualSubject, setManualSubject] = useState('');
   const [manualChapter, setManualChapter] = useState('');
   const [manualKeywords, setManualKeywords] = useState('');
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Record<string, boolean>>({});
 
   const reload = useCallback(() => {
     setNodes(readKnowledgeTreeNodes());
@@ -129,6 +130,13 @@ export default function KnowledgeTreePage() {
     const confirmed = window.confirm('确定删除这个知识点吗？');
     if (!confirmed) return;
     setNodes(removeKnowledgeTreeNode(id));
+  };
+
+  const handleToggleCollapse = (id: string) => {
+    setCollapsedNodeIds((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
   };
 
   const handleAddManual = () => {
@@ -305,35 +313,48 @@ export default function KnowledgeTreePage() {
                       {node.subject} · 最近更新 {formatDate(node.updatedAt)}
                     </p>
                   </div>
-                  <button className="delete-btn" type="button" onClick={() => handleDelete(node.id)}>
-                    删除
-                  </button>
-                </div>
-
-                {node.keywords.length > 0 && (
-                  <div className="keywords">
-                    {node.keywords.map((keyword) => (
-                      <span key={keyword} className="keyword">
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <p className="summary">{node.summary || '暂无总结'}</p>
-
-                <div className="status-actions">
-                  {(Object.keys(STATUS_META) as KnowledgeNodeStatus[]).map((status) => (
+                  <div className="node-head-actions">
                     <button
+                      className="collapse-btn"
                       type="button"
-                      key={status}
-                      className={`status-btn ${node.status === status ? 'active' : ''} ${STATUS_META[status].className}`}
-                      onClick={() => handleStatusChange(node.id, status)}
+                      onClick={() => handleToggleCollapse(node.id)}
                     >
-                      {STATUS_META[status].label}
+                      {collapsedNodeIds[node.id] ? '展开' : '收起'}
                     </button>
-                  ))}
+                    <button className="delete-btn" type="button" onClick={() => handleDelete(node.id)}>
+                      删除
+                    </button>
+                  </div>
                 </div>
+
+                {!collapsedNodeIds[node.id] && (
+                  <>
+                    {node.keywords.length > 0 && (
+                      <div className="keywords">
+                        {node.keywords.map((keyword) => (
+                          <span key={keyword} className="keyword">
+                            {keyword}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <p className="summary">{node.summary || '暂无总结'}</p>
+
+                    <div className="status-actions">
+                      {(Object.keys(STATUS_META) as KnowledgeNodeStatus[]).map((status) => (
+                        <button
+                          type="button"
+                          key={status}
+                          className={`status-btn ${node.status === status ? 'active' : ''} ${STATUS_META[status].className}`}
+                          onClick={() => handleStatusChange(node.id, status)}
+                        >
+                          {STATUS_META[status].label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </article>
             ))}
           </div>
@@ -522,6 +543,11 @@ export default function KnowledgeTreePage() {
           gap: 12px;
           align-items: flex-start;
         }
+        .node-head-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
         .node-head h4 {
           margin: 0;
           font-size: 16px;
@@ -536,6 +562,15 @@ export default function KnowledgeTreePage() {
           border: none;
           background: #fee2e2;
           color: #991b1b;
+          border-radius: 8px;
+          padding: 6px 10px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .collapse-btn {
+          border: 1px solid #cbd5e1;
+          background: #ffffff;
+          color: #334155;
           border-radius: 8px;
           padding: 6px 10px;
           font-size: 12px;
@@ -644,4 +679,3 @@ export default function KnowledgeTreePage() {
     </AppShell>
   );
 }
-

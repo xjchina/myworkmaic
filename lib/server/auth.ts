@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { users, otpTickets } from '@/lib/db/schema';
 import { createAuthToken, verifyAuthToken, AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from './auth-token';
 import { cookies } from 'next/headers';
+import { isTencentSmsEnabled, sendTencentSmsCode } from './tencent-sms';
 
 // ==================== Validation ====================
 
@@ -29,8 +30,8 @@ export async function hashPassword(password: string): Promise<string> {
   return hash(password, 10);
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return compare(password, hash);
+export async function verifyPassword(password: string, hashed: string): Promise<boolean> {
+  return compare(password, hashed);
 }
 
 // ==================== User queries ====================
@@ -48,6 +49,7 @@ export async function findUserById(id: string) {
 export async function findUserByInviteCode(inviteCode: string) {
   const code = inviteCode.trim().toUpperCase();
   if (!code) return null;
+
   const rows = await db
     .select({
       id: users.id,
@@ -57,6 +59,7 @@ export async function findUserByInviteCode(inviteCode: string) {
     .from(users)
     .where(eq(users.inviteCode, code))
     .limit(1);
+
   return rows[0] ?? null;
 }
 
@@ -136,8 +139,24 @@ export async function createOtpTicket(phone: string): Promise<{
 
   const code = randomOtpCode();
   const expiresAt = new Date(now.getTime() + OTP_EXPIRE_MS);
+  const smsEnabled = isTencentSmsEnabled();
 
-  // Upsert OTP ticket
+  if (smsEnabled) {
+    const smsResult = await sendTencentSmsCode({
+      phone,
+      code,
+      validMinutes: Math.floor(OTP_EXPIRE_MS / 60000),
+    });
+
+    if (!smsResult.success) {
+      return {
+        success: false,
+        message: `短信发送失败：${smsResult.message}`,
+      };
+    }
+  }
+
+  // Upsert OTP ticket only after SMS send succeeds
   await db
     .insert(otpTickets)
     .values({
@@ -158,8 +177,10 @@ export async function createOtpTicket(phone: string): Promise<{
 
   return {
     success: true,
-    message: `验证码已发送到 ${phone.slice(0, 3)}****${phone.slice(7)}（演示环境）。`,
-    debugCode: code,
+    message: smsEnabled
+      ? `验证码已发送到 ${phone.slice(0, 3)}****${phone.slice(7)}`
+      : `验证码已发送到 ${phone.slice(0, 3)}****${phone.slice(7)}（开发调试模式）`,
+    debugCode: smsEnabled ? undefined : code,
   };
 }
 

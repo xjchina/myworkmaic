@@ -520,18 +520,53 @@ function buildPrompt(subject: string, chapter: string): string {
     .replace(/\{日期\}/g, new Date().toLocaleDateString('zh-CN'));
 }
 
+function extractStepNumber(text: string): number | null {
+  if (!text) return null;
+  const tagged = text.match(/\[(?:STEP|步骤)\s*:\s*([1-5])\]/i);
+  if (tagged) return Number(tagged[1]);
+
+  const numeric = text.match(/第\s*([1-5])\s*步/);
+  if (numeric) return Number(numeric[1]);
+
+  const cn = text.match(/第\s*([一二三四五])\s*步/);
+  if (cn) {
+    const map: Record<string, number> = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5 };
+    return map[cn[1]] ?? null;
+  }
+  return null;
+}
+
+function stripStepTag(text: string): string {
+  return text.replace(/^\s*\[(?:STEP|步骤)\s*:\s*[1-5]\]\s*/i, '').trim();
+}
+
+function isFinalSummary(text: string): boolean {
+  return /[📚🔑⚠️📝🔗✅💪]/.test(text) && text.length > 100;
+}
+
 // ─── API Handler ───────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
-    const { chapter, steps, dialogueHistory, subject } = await request.json();
+    const { chapter, steps, dialogueHistory, subject, currentStep } = await request.json();
     const subjectName = subject || '数学';
     const systemPrompt = buildPrompt(subjectName, chapter || '');
 
     if (dialogueHistory && Array.isArray(dialogueHistory)) {
       // Dialogue mode: forward the conversation
+      const safeStep =
+        typeof currentStep === 'number' && Number.isFinite(currentStep)
+          ? Math.min(Math.max(Math.floor(currentStep), 1), 5)
+          : 1;
+      const stepControlPrompt = `你正在执行白纸回忆法第${safeStep}步。请严格遵守：
+1) 每次回复开头必须使用标签：[STEP:1] 到 [STEP:5]。
+2) 如果当前信息不足，继续追问并保持同一步标签。
+3) 只有在该步信息完整后，才切换到下一步标签。
+4) 当五步全部完成并输出最终总结时，开头使用 [SUMMARY]，不要再输出 [STEP:x]。
+5) 除标签外，其余内容保持自然中文提问或总结。`;
       const messages = [
         { role: 'system', content: systemPrompt },
+        { role: 'system', content: stepControlPrompt },
         ...dialogueHistory,
       ];
 
@@ -547,7 +582,12 @@ export async function POST(request: NextRequest) {
       }
 
       const data = await response.json();
-      return Response.json({ content: data.choices?.[0]?.message?.content || '' });
+      const rawContent = data.choices?.[0]?.message?.content || '';
+      const isSummaryTagged = /^\s*\[SUMMARY\]/i.test(rawContent);
+      const cleaned = stripStepTag(rawContent).replace(/^\s*\[SUMMARY\]\s*/i, '').trim();
+      const step = extractStepNumber(rawContent) ?? extractStepNumber(cleaned);
+      const final = isSummaryTagged || isFinalSummary(cleaned);
+      return Response.json({ content: cleaned, step, isFinal: final });
     }
 
     // Standard mode: build user message from the form steps

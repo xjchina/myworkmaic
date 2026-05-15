@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { BookOpen, Sparkles, Box } from 'lucide-react';
+import { BookOpen, Sparkles } from 'lucide-react';
 import { AppShell } from '@/components/shell/app-shell';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
@@ -40,14 +40,6 @@ export default function ClassroomPage() {
             <Link className="action-btn demo-action-sets" href="/classroom/demo-sets">
               <BookOpen className="size-4" />
               进入示例课堂
-            </Link>
-          </article>
-          <article className="info-card">
-            <div className="card-title">3D Spark 实验台</div>
-            <div className="card-desc">进入独立 3D 页面，使用内置示例模型进行旋转、缩放、平移互动学习。</div>
-            <Link className="action-btn" href="/classroom/3d-lab">
-              <Box className="size-4" />
-              进入实验
             </Link>
           </article>
         </div>
