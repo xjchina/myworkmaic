@@ -1,8 +1,13 @@
-import { eq } from 'drizzle-orm';
+﻿import { eq } from 'drizzle-orm';
 import { compare, hash } from 'bcryptjs';
 import { db } from '@/lib/db';
 import { users, otpTickets } from '@/lib/db/schema';
-import { createAuthToken, verifyAuthToken, AUTH_COOKIE_NAME, AUTH_COOKIE_MAX_AGE } from './auth-token';
+import {
+  createAuthToken,
+  verifyAuthToken,
+  AUTH_COOKIE_NAME,
+  AUTH_COOKIE_MAX_AGE,
+} from './auth-token';
 import { cookies } from 'next/headers';
 import { isTencentSmsEnabled, sendTencentSmsCode } from './tencent-sms';
 
@@ -80,10 +85,7 @@ export async function createUser(data: {
 }
 
 export async function updateLastLoginAt(userId: string) {
-  await db
-    .update(users)
-    .set({ lastLoginAt: new Date() })
-    .where(eq(users.id, userId));
+  await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
 }
 
 // ==================== OTP ====================
@@ -92,9 +94,10 @@ const OTP_EXPIRE_MS = 5 * 60 * 1000;
 const OTP_COOLDOWN_MS = 60 * 1000;
 const MAX_OTP_ATTEMPTS = 5;
 
-/** Pre-set test account bypass code */
+/** Pre-set test account bypass code (DEV only) */
 const PRESET_TEST_PHONE = '13800138000';
 const PRESET_TEST_OTP = '123456';
+const PRESET_TEST_ENABLED = process.env.NODE_ENV !== 'production';
 
 export function randomOtpCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -106,8 +109,8 @@ export async function createOtpTicket(phone: string): Promise<{
   debugCode?: string;
   waitSeconds?: number;
 }> {
-  // Pre-set test account: return fixed code without cooldown
-  if (phone === PRESET_TEST_PHONE) {
+  // DEV/TEST only: fixed OTP for preset phone
+  if (PRESET_TEST_ENABLED && phone === PRESET_TEST_PHONE) {
     return {
       success: true,
       message: `测试账号验证码：${PRESET_TEST_OTP}（固定）`,
@@ -118,11 +121,7 @@ export async function createOtpTicket(phone: string): Promise<{
   const now = new Date();
 
   // Check cooldown
-  const existing = await db
-    .select()
-    .from(otpTickets)
-    .where(eq(otpTickets.phone, phone))
-    .limit(1);
+  const existing = await db.select().from(otpTickets).where(eq(otpTickets.phone, phone)).limit(1);
 
   if (existing.length > 0) {
     const lastSentAt = existing[0].lastSentAt.getTime();
@@ -188,16 +187,12 @@ export async function verifyOtpCode(
   phone: string,
   code: string,
 ): Promise<{ success: boolean; message: string }> {
-  // Pre-set test account bypass
-  if (phone === PRESET_TEST_PHONE && code.trim() === PRESET_TEST_OTP) {
+  // DEV/TEST only: preset account bypass
+  if (PRESET_TEST_ENABLED && phone === PRESET_TEST_PHONE && code.trim() === PRESET_TEST_OTP) {
     return { success: true, message: '' };
   }
 
-  const tickets = await db
-    .select()
-    .from(otpTickets)
-    .where(eq(otpTickets.phone, phone))
-    .limit(1);
+  const tickets = await db.select().from(otpTickets).where(eq(otpTickets.phone, phone)).limit(1);
 
   if (tickets.length === 0) {
     return { success: false, message: '请先获取验证码。' };
@@ -205,28 +200,23 @@ export async function verifyOtpCode(
 
   const ticket = tickets[0];
 
-  // Check attempts
   if (ticket.attempts >= MAX_OTP_ATTEMPTS) {
     return { success: false, message: '验证码已失效，请重新获取。' };
   }
 
-  // Check expiry
   if (new Date() > ticket.expiresAt) {
     return { success: false, message: '验证码已过期，请重新获取。' };
   }
 
-  // Increment attempts
   await db
     .update(otpTickets)
     .set({ attempts: ticket.attempts + 1 })
     .where(eq(otpTickets.phone, phone));
 
-  // Verify code
   if (ticket.code !== code.trim()) {
     return { success: false, message: '验证码错误，请重试。' };
   }
 
-  // Delete used ticket
   await db.delete(otpTickets).where(eq(otpTickets.phone, phone));
 
   return { success: true, message: '' };

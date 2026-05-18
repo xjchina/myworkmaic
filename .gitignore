@@ -64,6 +64,8 @@ next-env.d.ts
 
 # worktrees
 .worktrees
+.workbuddy/
+tmp/
 
 # generated data
 /data
