@@ -13,6 +13,7 @@ import {
   findUserByInviteCode,
 } from '@/lib/server/auth';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
 type RegisterBody = {
   phone?: string;
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return apiError('INVALID_REQUEST', 400, '请求体 JSON 格式不正确');
+    return apiError('INVALID_REQUEST', 400, '请求体 JSON 格式不正确。');
   }
 
   const phone = normalizePhone(body.phone || '');
@@ -68,9 +69,36 @@ export async function POST(request: Request) {
     return apiError('INVALID_REQUEST', 400, '密码至少 8 位，且需包含大小写字母和数字。');
   }
 
+  const moderation = await checkCombinedCompliance({
+    inputs: [displayName, inviteCode],
+    scene: 'auth-register',
+    service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+  });
+  if (moderation.blocked) {
+    await recordAuthResult({
+      request,
+      action: 'register',
+      phone,
+      success: false,
+      reason: 'content_blocked',
+    });
+    return apiError(
+      'CONTENT_SENSITIVE',
+      400,
+      '输入内容未通过审核，请调整后重试。',
+      moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+    );
+  }
+
   const existing = await findUserByPhone(phone);
   if (existing) {
-    await recordAuthResult({ request, action: 'register', phone, success: false, reason: 'already_registered' });
+    await recordAuthResult({
+      request,
+      action: 'register',
+      phone,
+      success: false,
+      reason: 'already_registered',
+    });
     return apiError('INVALID_REQUEST', 409, '该手机号已注册，请直接登录。');
   }
 
@@ -84,7 +112,13 @@ export async function POST(request: Request) {
   if (inviteCode) {
     const inviter = await findUserByInviteCode(inviteCode);
     if (!inviter) {
-      await recordAuthResult({ request, action: 'register', phone, success: false, reason: 'invite_invalid' });
+      await recordAuthResult({
+        request,
+        action: 'register',
+        phone,
+        success: false,
+        reason: 'invite_invalid',
+      });
       return apiError('INVALID_REQUEST', 400, '邀请码无效，请检查后重试。');
     }
     invitedBy = inviter.id;
@@ -110,3 +144,4 @@ export async function POST(request: Request) {
     user: { id: userId, phone, displayName },
   });
 }
+

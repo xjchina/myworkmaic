@@ -12,6 +12,7 @@ import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { getAuthUserId } from '@/lib/server/auth';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 const log = createLogger('PBL Chat');
 
 interface PBLChatRequest {
@@ -36,6 +37,20 @@ export async function POST(req: NextRequest) {
     const { message, agent, currentIssue, recentMessages, userRole, agentType } = body;
     agentName = agent?.name;
     resolvedAgentType = agentType;
+    const moderation = await checkCombinedCompliance({
+      inputs: [message],
+      scene: 'pbl-chat',
+      userId,
+      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
 
     if (!message || !agent) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Message and agent are required');

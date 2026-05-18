@@ -1,8 +1,8 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Eye, EyeOff, Key } from 'lucide-react';
 import { QuizView } from '@/components/scene-renderers/quiz-view';
 import { useSettingsStore } from '@/lib/store/settings';
 import type { QuizQuestion } from '@/lib/types/stage';
@@ -16,6 +16,7 @@ import {
 import { DEMO_QUIZ_PRESETS, type DemoQuizPreset } from '@/lib/data/demo-quiz-subjects';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
+import type { PDFProviderId } from '@/lib/pdf/types';
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -40,6 +41,49 @@ export function QuizWorkbench() {
   const [savedSessions, setSavedSessions] = useState<QuizSessionRecord[]>([]);
   const [dragover, setDragover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // MinerU Cloud API key: read from settings store, editable in-page
+  const [mineruApiKey, setMineruApiKey] = useState<string>('');
+  const [mineruBaseUrl, setMineruBaseUrl] = useState<string>('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [pdfProviderId, setPdfProviderId] = useState<PDFProviderId>('unpdf');
+
+  // Sync from settings store on mount
+  useEffect(() => {
+    const s = useSettingsStore.getState();
+    const cloudConfig = s.pdfProvidersConfig?.['mineru-cloud'];
+    const selfHostedConfig = s.pdfProvidersConfig?.['mineru'];
+    // Prefer cloud API key from settings, then self-hosted
+    if (cloudConfig?.apiKey) {
+      setMineruApiKey(cloudConfig.apiKey);
+      setMineruBaseUrl(cloudConfig.baseUrl || '');
+      setPdfProviderId('mineru-cloud');
+    } else if (selfHostedConfig?.baseUrl) {
+      setMineruBaseUrl(selfHostedConfig.baseUrl);
+      setPdfProviderId('mineru');
+    } else if (s.pdfProviderId !== 'unpdf') {
+      setPdfProviderId(s.pdfProviderId);
+      if (s.pdfProvidersConfig?.[s.pdfProviderId]?.apiKey) {
+        setMineruApiKey(s.pdfProvidersConfig[s.pdfProviderId].apiKey);
+      }
+      if (s.pdfProvidersConfig?.[s.pdfProviderId]?.baseUrl) {
+        setMineruBaseUrl(s.pdfProvidersConfig[s.pdfProviderId].baseUrl);
+      }
+    }
+  }, []);
+
+  // Persist key changes back to settings store
+  const saveMineruConfig = (providerId: PDFProviderId, apiKey: string, baseUrl: string) => {
+    const s = useSettingsStore.getState();
+    s.setPDFProvider(providerId);
+    if (providerId === 'mineru-cloud') {
+      s.setPDFProviderConfig('mineru-cloud', { apiKey, baseUrl, enabled: !!apiKey });
+    } else if (providerId === 'mineru') {
+      s.setPDFProviderConfig('mineru', { apiKey, baseUrl, enabled: !!baseUrl });
+    }
+  };
+
+  const hasMineruKey = pdfProviderId === 'mineru-cloud' ? !!mineruApiKey.trim() : !!mineruBaseUrl.trim();
 
   const currentStep = questions?.length ? 4 : isGenerating ? 3 : pdfFile ? 2 : 1;
 
@@ -120,25 +164,33 @@ export function QuizWorkbench() {
     setError(null);
     setIsGenerating(true);
     try {
-      const settings = useSettingsStore.getState();
+      // Determine PDF provider: use MinerU if key available, otherwise fallback to unpdf
+      const effectiveProviderId: PDFProviderId = hasMineruKey ? pdfProviderId : 'unpdf';
+
       const formData = new FormData();
       formData.append('pdf', pdfFile);
       formData.append('usageFeature', 'exercise');
       formData.append('usageKey', `exercise-${Date.now()}-${nanoid(6)}`);
-      if (settings.pdfProviderId) formData.append('providerId', settings.pdfProviderId);
+      formData.append('providerId', effectiveProviderId);
 
-      const providerConfig = settings.pdfProvidersConfig?.[settings.pdfProviderId];
-      if (providerConfig?.apiKey?.trim()) formData.append('apiKey', providerConfig.apiKey);
-      if (providerConfig?.baseUrl?.trim()) formData.append('baseUrl', providerConfig.baseUrl);
+      // Pass MinerU credentials
+      if (effectiveProviderId === 'mineru-cloud' && mineruApiKey.trim()) {
+        formData.append('apiKey', mineruApiKey.trim());
+        if (mineruBaseUrl.trim()) formData.append('baseUrl', mineruBaseUrl.trim());
+      } else if (effectiveProviderId === 'mineru' && mineruBaseUrl.trim()) {
+        formData.append('baseUrl', mineruBaseUrl.trim());
+        if (mineruApiKey.trim()) formData.append('apiKey', mineruApiKey.trim());
+      }
 
       const parseResponse = await fetch('/api/parse-pdf', { method: 'POST', body: formData });
       const parseResult = await parseResponse.json();
       if (!parseResponse.ok || !parseResult?.success || !parseResult?.data) {
-        throw new Error(parseResult?.error || 'PDF \u89e3\u6790\u5931\u8d25');
+        throw new Error(parseResult?.error || 'PDF 解析失败');
       }
 
       const parsedText = String(parseResult.data.text || '').trim();
-      const extractedQuestions = parseQuizFromPdfText(parsedText);
+      const usedParser = parseResult.data.metadata?.parser || effectiveProviderId;
+      const extractedQuestions = parseQuizFromPdfText(parsedText, usedParser);
       if (extractedQuestions.length === 0) {
         throw new Error(
           'PDF \u4e2d\u672a\u8bc6\u522b\u5230\u6709\u6548\u9898\u76ee\u3002\u7cfb\u7edf\u4e0d\u4f1a\u81ea\u52a8\u8865\u9898\uff0c\u8bf7\u786e\u8ba4\u8bb2\u4e49\u4e2d\u5305\u542b\u6807\u51c6\u9898\u53f7\uff08\u5982\u201c\u7b2c1\u9898\u201d\u6216\u201c1.\u201d\uff09\u3002',
@@ -213,6 +265,84 @@ export function QuizWorkbench() {
 
   return (
     <div className="exercise-workbench">
+      <section className="parse-section parser-top-section">
+        <div className="mineru-config">
+          <div className="mineru-config-header">
+            <Key className="w-3.5 h-3.5" />
+            <span>PDF 解析引擎</span>
+            {!hasMineruKey && <span className="mineru-badge-unconfigured">未配置 MinerU</span>}
+            {hasMineruKey && <span className="mineru-badge-configured">MinerU 已就绪</span>}
+          </div>
+          {!hasMineruKey && (
+            <p className="mineru-hint">
+              含数学公式的 PDF 建议使用 MinerU 解析，unpdf 模式对公式识别较弱。
+            </p>
+          )}
+          <div className="mineru-config-row">
+            <label className="mineru-label">模式</label>
+            <select
+              className="mineru-select"
+              value={pdfProviderId}
+              onChange={(e) => {
+                const v = e.target.value as PDFProviderId;
+                setPdfProviderId(v);
+                saveMineruConfig(v, mineruApiKey, mineruBaseUrl);
+              }}
+            >
+              <option value="unpdf">unpdf（基础文本提取）</option>
+              <option value="mineru-cloud">MinerU 云端（推荐，支持公式）</option>
+              <option value="mineru">MinerU 自建服务</option>
+            </select>
+          </div>
+          {pdfProviderId === 'mineru-cloud' && (
+            <div className="mineru-config-row">
+              <label className="mineru-label">API Key</label>
+              <div className="mineru-input-wrap">
+                <input
+                  type={showApiKey ? 'text' : 'password'}
+                  className="mineru-input"
+                  placeholder="输入 MinerU 云端 API Key"
+                  value={mineruApiKey}
+                  onChange={(e) => {
+                    setMineruApiKey(e.target.value);
+                    saveMineruConfig(pdfProviderId, e.target.value, mineruBaseUrl);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="mineru-eye-btn"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  title={showApiKey ? '隐藏密钥' : '显示密钥'}
+                >
+                  {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
+          {(pdfProviderId === 'mineru-cloud' || pdfProviderId === 'mineru') && (
+            <div className="mineru-config-row">
+              <label className="mineru-label">
+                {pdfProviderId === 'mineru-cloud' ? 'API 地址' : '服务地址'}
+              </label>
+              <input
+                type="text"
+                className="mineru-input"
+                placeholder={
+                  pdfProviderId === 'mineru-cloud'
+                    ? '默认 https://mineru.net/api/v4'
+                    : '输入 MinerU 自建服务地址'
+                }
+                value={mineruBaseUrl}
+                onChange={(e) => {
+                  setMineruBaseUrl(e.target.value);
+                  saveMineruConfig(pdfProviderId, mineruApiKey, e.target.value);
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </section>
+
       <section className="flow-section">
         <h3 className="flow-title">{'\u4f7f\u7528\u6d41\u7a0b'}</h3>
         <div className="flow-steps">
@@ -233,15 +363,15 @@ export function QuizWorkbench() {
         </div>
       </section>
 
-      {/* 鈹€鈹€ Two-column layout for initial state 鈹€鈹€ */}
+      {/* Two-column layout for initial state */}
       {!pdfFile && !questions ? (
         <div className="main-layout">
-          {/* Left sidebar 鈥?history */}
+          {/* Left sidebar history */}
           <aside className="history-sidebar">
             <section className="history-section">
               <div className="history-head">
                 <h3>历史练习</h3>
-                <span>{savedSessions.length} 项</span>
+                <span>{savedSessions.length} 条</span>
               </div>
               <div className="history-list">
                 {savedSessions.length === 0 ? (
@@ -330,7 +460,7 @@ export function QuizWorkbench() {
             </div>
             <div className="parse-actions">
               <button type="button" className="btn btn-outline" onClick={handleReset}>
-                {'\u91cd\u65b0\u4e0a\u4f20'}
+                {'重新上传'}
               </button>
               <button
                 type="button"
@@ -339,11 +469,15 @@ export function QuizWorkbench() {
                 disabled={isGenerating}
               >
                 {isGenerating
-                  ? '\u6b63\u5728\u89e3\u6790\u4e2d...'
-                  : '\u5f00\u59cb\u89e3\u6790\u9898\u76ee'}
+                  ? '正在解析中...'
+                  : hasMineruKey
+                    ? '开始解析题目（MinerU）'
+                    : '开始解析题目'}
               </button>
             </div>
           </div>
+
+
           {summary && <p className="summary">{summary}</p>}
           {error && <p className="error">{error}</p>}
         </section>
@@ -379,6 +513,10 @@ export function QuizWorkbench() {
           display: flex;
           flex-direction: column;
           gap: 24px;
+        }
+        .parser-top-section {
+          padding-top: 20px;
+          padding-bottom: 20px;
         }
         .main-layout {
           display: flex;
@@ -761,6 +899,111 @@ export function QuizWorkbench() {
           display: flex;
           gap: 12px;
         }
+        .mineru-config {
+          margin-top: 18px;
+          padding: 16px;
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+        }
+        .mineru-config-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          font-weight: 600;
+          color: #334155;
+          margin-bottom: 10px;
+        }
+        .mineru-badge-unconfigured {
+          background: #fef3c7;
+          color: #92400e;
+          padding: 1px 8px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .mineru-badge-configured {
+          background: #dcfce7;
+          color: #166534;
+          padding: 1px 8px;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 500;
+        }
+        .mineru-hint {
+          font-size: 12px;
+          color: #b45309;
+          margin: 0 0 10px;
+          line-height: 1.5;
+        }
+        .mineru-config-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+        .mineru-config-row:last-child {
+          margin-bottom: 0;
+        }
+        .mineru-label {
+          font-size: 12px;
+          color: #64748b;
+          min-width: 68px;
+          text-align: right;
+          flex-shrink: 0;
+        }
+        .mineru-select {
+          flex: 1;
+          padding: 6px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 13px;
+          background: white;
+          color: #334155;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .mineru-select:focus {
+          border-color: #a78bfa;
+        }
+        .mineru-input-wrap {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          position: relative;
+        }
+        .mineru-input {
+          flex: 1;
+          padding: 6px 36px 6px 10px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          font-size: 13px;
+          background: white;
+          color: #334155;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .mineru-input:focus {
+          border-color: #a78bfa;
+        }
+        .mineru-input::placeholder {
+          color: #94a3b8;
+        }
+        .mineru-eye-btn {
+          position: absolute;
+          right: 8px;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #94a3b8;
+          padding: 2px;
+          display: flex;
+          align-items: center;
+        }
+        .mineru-eye-btn:hover {
+          color: #64748b;
+        }
         .practice-actions {
           display: flex;
           gap: 12px;
@@ -871,4 +1114,5 @@ export function QuizWorkbench() {
     </div>
   );
 }
+
 

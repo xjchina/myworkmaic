@@ -43,56 +43,58 @@ export function UpgradeModal({ open, onOpenChange, feature = 'classroom' }: Upgr
             onClick={() => onOpenChange(false)}
           />
 
-          <motion.div
-            className={styles.modal}
-            initial={{ opacity: 0, scale: 0.92, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <button className={styles.closeBtn} onClick={() => onOpenChange(false)}>
-              <X className="size-4" />
-            </button>
-
-            <div className={styles.modalHeader}>
-              <div className={styles.illustration} style={{ background: PLAN_META[targetPlan].gradient }}>
-                {targetPlan === 'vip' ? <Crown className="size-10" /> : <Sparkles className="size-10" />}
-              </div>
-              <h2 className={styles.modalTitle}>升级到 {PLAN_META[targetPlan].label}</h2>
-              <p className={styles.modalSubtitle}>{FEATURE_MESSAGES[feature] || '解锁更多使用次数'}</p>
-            </div>
-
-            <ul className={styles.benefitList}>
-              {[
-                '教案课堂更高额度或无限使用',
-                '互动练习更多题量',
-                '完整学习数据分析',
-                '数据导出与历史留存',
-              ].map((text) => (
-                <li key={text} className={styles.benefitItem}>
-                  <span className={styles.benefitCheck}>✓</span>
-                  {text}
-                </li>
-              ))}
-            </ul>
-
-            <div className={styles.priceHighlight}>
-              <span className={styles.priceLabel}>{PLAN_META[targetPlan].label}仅需</span>
-              <span className={styles.priceAmount}>{PLAN_META[targetPlan].price}</span>
-              <span className={styles.pricePeriod}>{PLAN_META[targetPlan].period}</span>
-            </div>
-
-            <button
-              className={styles.upgradeButton}
-              style={{ background: PLAN_META[targetPlan].gradient }}
-              onClick={handleUpgrade}
+          <div className={styles.modalWrap}>
+            <motion.div
+              className={styles.modal}
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
             >
-              立即升级
-              <ArrowRight className="size-4" />
-            </button>
+              <button className={styles.closeBtn} onClick={() => onOpenChange(false)}>
+                <X className="size-4" />
+              </button>
 
-            <p className={styles.footerHint}>支持兑换码激活 · 到期自动降级不丢失数据</p>
-          </motion.div>
+              <div className={styles.modalHeader}>
+                <div className={styles.illustration} style={{ background: PLAN_META[targetPlan].gradient }}>
+                  {targetPlan === 'vip' ? <Crown className="size-10" /> : <Sparkles className="size-10" />}
+                </div>
+                <h2 className={styles.modalTitle}>升级到 {PLAN_META[targetPlan].label}</h2>
+                <p className={styles.modalSubtitle}>{FEATURE_MESSAGES[feature] || '解锁更多使用次数'}</p>
+              </div>
+
+              <ul className={styles.benefitList}>
+                {[
+                  '教案课堂更高额度或无限使用',
+                  '互动练习更多题量',
+                  '完整学习数据分析',
+                  '数据导出与历史留存',
+                ].map((text) => (
+                  <li key={text} className={styles.benefitItem}>
+                    <span className={styles.benefitCheck}>✓</span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+
+              <div className={styles.priceHighlight}>
+                <span className={styles.priceLabel}>{PLAN_META[targetPlan].label}仅需</span>
+                <span className={styles.priceAmount}>{PLAN_META[targetPlan].price}</span>
+                <span className={styles.pricePeriod}>{PLAN_META[targetPlan].period}</span>
+              </div>
+
+              <button
+                className={styles.upgradeButton}
+                style={{ background: PLAN_META[targetPlan].gradient }}
+                onClick={handleUpgrade}
+              >
+                立即升级
+                <ArrowRight className="size-4" />
+              </button>
+
+              <p className={styles.footerHint}>支持兑换码激活 · 到期自动降级不丢失数据</p>
+            </motion.div>
+          </div>
         </>
       )}
     </AnimatePresence>

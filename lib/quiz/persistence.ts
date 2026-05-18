@@ -25,6 +25,7 @@ export const NOTEBOOK_KEY = 'mistakeNotebook:v1';
 export const QUIZ_SESSION_LIST_KEY = 'quizSessions:v1';
 export const SCENE_TITLES_KEY = 'sceneTitles:v1';
 export const SCENE_SUBJECTS_KEY = 'sceneSubjects:v1';
+export const QUIZ_PARSER_VERSION = 'v3';
 
 /** Build the draft cache key for a scene. Use this everywhere that needs the
  *  in-progress quiz answers (e.g. `useDraftCache`) so the prefix stays in
@@ -55,6 +56,7 @@ export interface QuizSessionRecord {
   summary: string;
   questionCount: number;
   questions: QuizQuestion[];
+  parserVersion: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -390,7 +392,7 @@ export function removeMistakeEntry(sceneId: string, questionId: string): void {
 export function removeMistakeEntriesByScene(sceneId: string): void {
   const store = readNotebookStore();
   const prefix = sceneId + "::";
-  let next = store.removedKeys.filter((k) => !k.startsWith(prefix));
+  const next = store.removedKeys.filter((k) => !k.startsWith(prefix));
   const allEntries = readMistakeNotebookEntries();
   for (const e of allEntries) {
     if (e.sceneId === sceneId) {
@@ -437,6 +439,7 @@ function isQuizSessionRecordLike(value: unknown): value is QuizSessionRecord {
     typeof record.questionCount === 'number' &&
     Array.isArray(record.questions) &&
     record.questions.every(isQuizQuestionLike) &&
+    record.parserVersion === QUIZ_PARSER_VERSION &&
     typeof record.createdAt === 'number' &&
     typeof record.updatedAt === 'number'
   );
@@ -448,16 +451,20 @@ export function readQuizSessions(): QuizSessionRecord[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
+    const filtered = parsed
       .filter(isQuizSessionRecordLike)
       .sort((a, b) => b.updatedAt - a.updatedAt);
+    if (filtered.length !== parsed.length) {
+      safeSet(QUIZ_SESSION_LIST_KEY, JSON.stringify(filtered));
+    }
+    return filtered;
   } catch {
     return [];
   }
 }
 
 export function saveQuizSession(
-  input: Omit<QuizSessionRecord, 'createdAt' | 'updatedAt'> & {
+  input: Omit<QuizSessionRecord, 'createdAt' | 'updatedAt' | 'parserVersion'> & {
     createdAt?: number;
     updatedAt?: number;
   },
@@ -473,6 +480,7 @@ export function saveQuizSession(
     summary: input.summary,
     questionCount: input.questionCount,
     questions: input.questions,
+    parserVersion: QUIZ_PARSER_VERSION,
     createdAt: existing?.createdAt ?? input.createdAt ?? now,
     updatedAt: input.updatedAt ?? now,
   };

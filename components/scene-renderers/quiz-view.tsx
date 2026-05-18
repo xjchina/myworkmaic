@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
+import { LatexText } from '@/components/ui/latex-text';
 
 const log = createLogger('QuizView');
 import type { QuizQuestion } from '@/lib/types/stage';
@@ -259,7 +260,7 @@ function SingleChoiceQuestion({
                   isReview && !isCorrectOpt && !selected && 'text-gray-400 dark:text-gray-500',
                 )}
               >
-                {opt.label}
+                <LatexText text={opt.label} />
               </span>
               {isReview && isCorrectOpt && (
                 <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
@@ -364,7 +365,7 @@ function MultipleChoiceQuestion({
                   isReview && !isCorrectOpt && !isSelected && 'text-gray-400 dark:text-gray-500',
                 )}
               >
-                {opt.label}
+                <LatexText text={opt.label} />
               </span>
               {isReview && isCorrectOpt && (
                 <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
@@ -519,7 +520,7 @@ function QuestionCard({
           </span>
           <div>
             <p className="text-sm font-medium text-gray-800 dark:text-gray-100 leading-relaxed">
-              {question.question}
+              <LatexText text={question.question} />
             </p>
             <p className="text-xs text-gray-400 mt-0.5">
               {question.type === 'single'
@@ -547,7 +548,7 @@ function QuestionCard({
       {isReview && question.analysis && (
         <div className="mt-3 p-3 rounded-lg bg-blue-50/70 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-800 text-xs text-blue-700 dark:text-blue-300 leading-relaxed">
           <span className="font-medium">{t('quiz.analysis')}</span>
-          {question.analysis}
+          <LatexText text={question.analysis} />
         </div>
       )}
     </motion.div>

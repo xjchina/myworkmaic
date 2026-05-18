@@ -14,7 +14,6 @@ import type {
   GeneratedQuizContent,
   GeneratedInteractiveContent,
   GeneratedPBLContent,
-  ScientificModel,
   PdfImage,
   ImageMapping,
   WidgetOutline,
@@ -32,7 +31,6 @@ import { parseActionsFromStructuredOutput } from './action-parser';
 import { parseJsonResponse } from './json-repair';
 import {
   buildCourseContext,
-  buildLanguageText,
   formatAgentsForPrompt,
   formatTeacherPersonaForPrompt,
   formatImageDescription,

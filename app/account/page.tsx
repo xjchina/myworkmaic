@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AppShell } from '@/components/shell/app-shell';
 import { useSessionStore } from '@/lib/store/session';
 import { useSubscriptionStore, PLAN_META, type SubscriptionType } from '@/lib/store/subscription';
@@ -25,19 +26,19 @@ const PLAN_ICONS: Record<SubscriptionType, typeof Zap> = {
   vip: Crown,
 };
 
-/** Membership status card for the left sidebar */
 function MembershipCard() {
   const subscription = useSubscriptionStore((s) => s.subscription);
   const loading = useSubscriptionStore((s) => s.loading);
   const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
 
   useEffect(() => {
-    fetchSubscription();
+    void fetchSubscription();
   }, [fetchSubscription]);
 
   const subType = subscription?.subscriptionType ?? 'free';
   const meta = PLAN_META[subType];
   const PlanIcon = PLAN_ICONS[subType];
+  const isFree = subType === 'free';
 
   if (loading) {
     return (
@@ -47,21 +48,19 @@ function MembershipCard() {
     );
   }
 
-  const isFree = subType === 'free';
-
   return (
     <div className={`${styles.membershipCard} ${isFree ? styles.membershipFree : ''}`}>
-      <div className={`${styles.badge}`} style={{ background: meta.gradient }}>
+      <div className={styles.badge} style={{ background: meta.gradient }}>
         <PlanIcon className="size-4" />
         <span>{meta.label}</span>
       </div>
 
-      {!isFree && subscription?.expiresAt && (
+      {!isFree && subscription?.expiresAt ? (
         <p className={styles.expiryText}>
           到期：{subscription.expiresAt}
           <span className={styles.daysLeft}>剩余 {subscription.remainingDays} 天</span>
         </p>
-      )}
+      ) : null}
 
       {isFree ? (
         <Link href="/subscribe" className={styles.upgradeBtn}>
@@ -75,13 +74,12 @@ function MembershipCard() {
         </Link>
       )}
 
-      {/* Quick permissions summary */}
       <div className={styles.permSummary}>
-        <span title={`每日教案课堂: ${subType === 'vip' ? '无限' : subscription?.permissions?.classroomDaily + '次'}`}>
+        <span title={`每日教案课堂：${subType === 'vip' ? '不限' : `${subscription?.permissions?.classroomDaily ?? 3} 次`}`}>
           教案 {subType === 'vip' ? '∞' : subscription?.permissions?.classroomDaily ?? 3}
         </span>
         <span className={styles.permDivider} />
-        <span title={`每日练习: ${subType === 'vip' ? '无限' : subscription?.permissions?.exerciseDaily + '题'}`}>
+        <span title={`每日互动练习：${subType === 'vip' ? '不限' : `${subscription?.permissions?.exerciseDaily ?? 5} 题`}`}>
           练习 {subType === 'vip' ? '∞' : subscription?.permissions?.exerciseDaily ?? 5}
         </span>
       </div>
@@ -90,43 +88,58 @@ function MembershipCard() {
 }
 
 export default function AccountPage() {
+  const router = useRouter();
   const { isLoggedIn } = useAuthGuard();
   const displayName = useSessionStore((s) => s.displayName);
   const userPhone = useSessionStore((s) => s.userPhone);
   const userCreatedAt = useSessionStore((s) => s.userCreatedAt);
   const userLastLoginAt = useSessionStore((s) => s.userLastLoginAt);
   const logout = useSessionStore((s) => s.logout);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (deleting) return;
+
+    const confirmed = window.confirm('注销后将永久删除账号和学习数据，且无法恢复。是否继续？');
+    if (!confirmed) return;
+
+    const phoneLast4 = userPhone?.slice(-4) || '';
+    if (phoneLast4) {
+      const input = window.prompt(`请输入当前手机号后4位（${phoneLast4}）确认注销`);
+      if (!input || input.trim() !== phoneLast4) {
+        window.alert('校验失败，已取消注销。');
+        return;
+      }
+    }
+
+    setDeleting(true);
+    try {
+      const res = await fetch('/api/auth/delete-account', { method: 'POST' });
+      const data = await res.json().catch(() => ({} as { success?: boolean; error?: string; message?: string }));
+      if (!res.ok || !data.success) {
+        window.alert(data.error || data.message || '注销失败，请稍后重试。');
+        return;
+      }
+
+      await logout();
+      window.alert('账号已注销。');
+      router.replace('/login');
+    } catch {
+      window.alert('网络异常，注销失败，请稍后重试。');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   if (!isLoggedIn) return null;
 
   return (
-    <AppShell
-      activeKey="account"
-      title="账号管理"
-      description="管理您的个人信息和账号设置"
-    >
+    <AppShell activeKey="account" title="账号管理" description="管理您的个人信息和账号设置">
       <div className="account-wrap">
         <section className="card profile-card">
-          <div className="profile-avatar">{displayName?.slice(0, 1) || '我'}</div>
+          <div className="profile-avatar">{displayName?.slice(0, 1) || '学'}</div>
           <div className="profile-name">{displayName || '学员'}</div>
-          <div className="profile-phone">{maskPhone(userPhone)}</div>
-          <div className="profile-stats">
-            <div className="profile-stat">
-              <span className="ps-value">{userCreatedAt ? formatDateTime(userCreatedAt).split(' ')[0] : '-'}</span>
-              <span className="ps-label">注册时间</span>
-            </div>
-            <div className="profile-stat">
-              <span className="ps-value">{userLastLoginAt ? formatDateTime(userLastLoginAt).split(' ')[0] : '-'}</span>
-              <span className="ps-label">最近登录</span>
-            </div>
-          </div>
-
-          {/* Membership card inside profile section */}
           <MembershipCard />
-
-          <button type="button" className="btn logout-btn" onClick={logout}>
-            退出登录
-          </button>
         </section>
 
         <section className="card">
@@ -150,7 +163,6 @@ export default function AccountPage() {
             </div>
           </div>
 
-          {/* Quick actions */}
           <div className="quick-actions">
             <Link href="/subscribe" className="quick-action-btn primary">
               <Crown className="size-4" />
@@ -166,8 +178,16 @@ export default function AccountPage() {
             </Link>
           </div>
 
-          <button type="button" className="btn logout-btn" onClick={logout}>
+          <button type="button" className="btn logout-btn" onClick={() => void logout()}>
             退出登录
+          </button>
+          <button
+            type="button"
+            className="btn delete-btn"
+            disabled={deleting}
+            onClick={() => void handleDeleteAccount()}
+          >
+            {deleting ? '注销中...' : '注销账号'}
           </button>
         </section>
       </div>
@@ -183,7 +203,7 @@ export default function AccountPage() {
           border-radius: 20px;
           padding: 28px;
           border: 1px solid #eef2f6;
-          box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
         }
         .profile-card {
           text-align: center;
@@ -209,30 +229,6 @@ export default function AccountPage() {
           font-size: 20px;
           font-weight: 700;
           color: #0f172a;
-        }
-        .profile-phone {
-          font-size: 14px;
-          color: #64748b;
-        }
-        .profile-stats {
-          display: flex;
-          gap: 24px;
-          margin: 12px 0;
-        }
-        .profile-stat {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 2px;
-        }
-        .ps-value {
-          font-size: 14px;
-          font-weight: 600;
-          color: #0f172a;
-        }
-        .ps-label {
-          font-size: 12px;
-          color: #94a3b8;
         }
         h3 {
           margin: 0 0 16px;
@@ -267,18 +263,29 @@ export default function AccountPage() {
           font-size: 14px;
           font-weight: 600;
           cursor: pointer;
+          width: 100%;
         }
         .logout-btn {
           margin-top: 16px;
           color: #dc2626;
           background: #fef2f2;
-          width: 100%;
         }
         .logout-btn:hover {
           background: #fee2e2;
         }
-
-        /* Quick action buttons row */
+        .delete-btn {
+          margin-top: 10px;
+          color: #b91c1c;
+          background: #fff1f2;
+          border: 1px solid #fecdd3;
+        }
+        .delete-btn:hover {
+          background: #ffe4e6;
+        }
+        .delete-btn:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
         .quick-actions {
           display: flex;
           gap: 10px;
@@ -302,7 +309,7 @@ export default function AccountPage() {
           border: none;
         }
         .primary:hover {
-          box-shadow: 0 2px 8px rgba(217,119,6,0.25);
+          box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
           transform: translateY(-1px);
         }
         .secondary {
@@ -313,7 +320,6 @@ export default function AccountPage() {
         .secondary:hover {
           background: #e0e7ff;
         }
-
         @media (max-width: 900px) {
           .account-wrap {
             grid-template-columns: 1fr;

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Download, RefreshCw, Trash2, Check, AlertTriangle, Plus, X } from 'lucide-react';
+import { Download, RefreshCw, Trash2, Check, AlertTriangle, X } from 'lucide-react';
 import { AppShell } from '@/components/shell/app-shell';
 import {
   readMistakeNotebookEntries,
@@ -10,7 +10,6 @@ import {
   removeMistakeEntries,
   clearAllMistakeEntries,
   saveSceneSubject,
-  getSceneSubjectMap,
   type MistakeNotebookEntry,
 } from '@/lib/quiz/persistence';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';

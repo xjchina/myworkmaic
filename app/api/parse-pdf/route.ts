@@ -8,6 +8,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 import { getAuthUserId } from '@/lib/server/auth';
 import { consumeUsageWithTransaction } from '@/lib/server/subscription';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 const log = createLogger('Parse PDF');
 
 export async function POST(req: NextRequest) {
@@ -84,6 +85,20 @@ export async function POST(req: NextRequest) {
 
     // Parse PDF using the provider system
     const result = await parsePDF(config, buffer);
+    const moderation = await checkCombinedCompliance({
+      inputs: [result.text],
+      scene: 'parse-pdf',
+      userId,
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '上传内容未通过审核，请更换资料后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
 
     // Add file metadata
     const resultWithMetadata: ParsedPdfContent = {

@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiError } from '@/lib/server/api-response';
 import { getAuthUserId } from '@/lib/server/auth';
 import { consumeUsageWithTransaction } from '@/lib/server/subscription';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
 const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
 
@@ -561,6 +562,41 @@ export async function POST(request: NextRequest) {
     }
 
     const { chapter, steps, dialogueHistory, subject, currentStep, sessionKey } = await request.json();
+    const lastUserText =
+      Array.isArray(dialogueHistory)
+        ? dialogueHistory
+            .filter((item) => item?.role === 'user' && typeof item?.content === 'string')
+            .slice(-1)
+            .map((item) => item.content)
+            .join('\n')
+        : '';
+    const moderation = await checkCombinedCompliance({
+      inputs: [
+        chapter,
+        subject,
+        lastUserText,
+        steps?.step1,
+        steps?.step2Mistake,
+        steps?.step2Focus,
+        steps?.step3,
+        steps?.step4Type,
+        steps?.step4Condition,
+        steps?.step4Goal,
+        steps?.step4Steps,
+        steps?.step5,
+      ],
+      scene: 'knowledge-recall',
+      userId,
+      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
     const subjectName = subject || '数学';
     const systemPrompt = buildPrompt(subjectName, chapter || '');
     const isDialogMode = Array.isArray(dialogueHistory);

@@ -20,6 +20,7 @@ import type { AICallFn } from '@/lib/generation/pipeline-types';
 import { WEB_SEARCH_PROVIDERS } from '@/lib/web-search/constants';
 import type { WebSearchProviderId } from '@/lib/web-search/types';
 import { resolveWebSearchRouteBaseUrl } from '@/lib/server/web-search-config';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
 const log = createLogger('WebSearch');
 
@@ -41,6 +42,19 @@ export async function POST(req: NextRequest) {
       baseUrl?: string;
     };
     query = requestQuery;
+    const moderation = await checkCombinedCompliance({
+      inputs: [requestQuery, pdfText],
+      scene: 'web-search',
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
 
     if (!query || !query.trim()) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'query is required');

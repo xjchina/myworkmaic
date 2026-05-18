@@ -1,13 +1,24 @@
 import { NextRequest } from 'next/server';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
 const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
 const DEEPSEEK_ANTHROPIC_API = 'https://api.deepseek.com/v1/messages';
-const API_KEY = 'sk-f5121ae7f8614c2f91772b6005e4bb31';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
+    const apiKeyFromHeader = request.headers.get('x-api-key')?.trim();
+    const apiKey = apiKeyFromHeader || process.env.DEEPSEEK_API_KEY?.trim();
+    if (!apiKey) {
+      return Response.json(
+        {
+          error: '后端未配置 DeepSeek API Key，请联系管理员配置后重试',
+        },
+        { status: 500 },
+      );
+    }
+
     const rawText = await request.text();
     if (!rawText || rawText.length < 50) {
       return Response.json({ error: '请求体为空或过小', length: rawText?.length || 0 }, { status: 400 });
@@ -77,7 +88,7 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(openAiPayload),
     });
@@ -110,14 +121,14 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
         body: JSON.stringify(anthropicPayload),
       });
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
+      await response.text();
       return Response.json({
         error: '图片识别服务暂不可用',
         detail: `DeepSeek Vision暂不支持，请先使用手动填写模式。`,
@@ -132,6 +143,21 @@ export async function POST(request: NextRequest) {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
+        const moderation = await checkCombinedCompliance({
+          inputs: [JSON.stringify(parsed), content],
+          scene: 'knowledge-ocr',
+          service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+        });
+        if (moderation.blocked) {
+          return Response.json(
+            {
+              success: false,
+              error: '输入内容未通过审核，请调整后重试。',
+              detail: moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+            },
+            { status: 400 },
+          );
+        }
         return Response.json({ success: true, data: parsed });
       }
       return Response.json({ success: false, error: '无法解析OCR结果', raw: content });

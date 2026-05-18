@@ -124,9 +124,9 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
     .from(usageLogs)
     .where(discussionWhere);
 
-  const activityWhere = windowStart
-    ? and(eq(usageLogs.userId, userId), gte(usageLogs.createdAt, windowStart))
-    : eq(usageLogs.userId, userId);
+  // 连续学习天数应基于完整历史，不受会员统计窗口限制，
+  // 否则 free/day 会被截断成最多 1 天，导致显示不准。
+  const activityWhere = eq(usageLogs.userId, userId);
 
   const activityRows = await db
     .select({ createdAt: usageLogs.createdAt })

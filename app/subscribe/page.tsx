@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppShell } from '@/components/shell/app-shell';
@@ -14,7 +14,6 @@ import {
   Copy,
   ArrowRight,
   Loader2,
-  X,
   ChevronRight,
 } from 'lucide-react';
 import styles from './subscribe.module.css';
@@ -25,10 +24,12 @@ function PlanCard({
   plan,
   isCurrent,
   onUpgrade,
+  disabled,
 }: {
   plan: SubscriptionType;
   isCurrent: boolean;
   onUpgrade: () => void;
+  disabled?: boolean;
 }) {
   const meta = PLAN_META[plan];
   const isRecommended = plan === 'sub';
@@ -39,55 +40,45 @@ function PlanCard({
       className={`${styles.planCard} ${isCurrent ? styles.planCardCurrent : ''} ${isRecommended ? styles.planCardRecommended : ''}`}
       data-plan={plan}
     >
-      {/* Badge */}
-      {meta.badge && (
+      {meta.badge ? (
         <div className={styles.planBadge} style={{ background: meta.gradient }}>
           {meta.badge}
         </div>
-      )}
+      ) : null}
 
-      {/* Header */}
       <div className={styles.planHeader}>
         <div className={styles.planIconWrap} style={{ background: meta.gradient }}>
-          {plan === 'free' && <Zap className={styles.planIcon} />}
-          {plan === 'sub' && <Sparkles className={styles.planIcon} />}
-          {plan === 'vip' && <Crown className={styles.planIcon} />}
+          {plan === 'free' ? <Zap className={styles.planIcon} /> : null}
+          {plan === 'sub' ? <Sparkles className={styles.planIcon} /> : null}
+          {plan === 'vip' ? <Crown className={styles.planIcon} /> : null}
         </div>
-        <h3 className={styles.planName} style={{ color: meta.color }}>{meta.label}</h3>
+        <h3 className={styles.planName} style={{ color: meta.color }}>
+          {meta.label}
+        </h3>
         <div className={styles.planPriceRow}>
           <span className={styles.planPrice}>{meta.price}</span>
           <span className={styles.planPeriod}>{meta.period}</span>
         </div>
       </div>
 
-      {/* Features */}
       <ul className={styles.featureList}>
         {(Object.keys(PERMISSION_LABELS) as Array<keyof typeof PERMISSION_LABELS>).map((key) => (
           <li key={key} className={`${styles.featureItem} ${plan !== 'free' ? styles.featureItemPremium : ''}`}>
-            <Check
-              className={styles.featureCheck}
-              style={{ color: plan === 'free' ? '#94a3b8' : meta.color }}
-            />
+            <Check className={styles.featureCheck} style={{ color: plan === 'free' ? '#94a3b8' : meta.color }} />
             <span className={styles.featureName}>{PERMISSION_LABELS[key].name}</span>
-            <span
-              className={styles.featureValue}
-              style={{ color: plan === 'free' ? '#64748b' : meta.color }}
-            >
+            <span className={styles.featureValue} style={{ color: plan === 'free' ? '#64748b' : meta.color }}>
               {PERMISSION_LABELS[key][plan]}
             </span>
           </li>
         ))}
       </ul>
 
-      {/* CTA */}
       {plan === 'free' ? (
         <div className={styles.planCtaDisabled}>当前方案</div>
       ) : isCurrent ? (
-        <div className={styles.planCtaActive}>
-          {plan === 'vip' ? 'VIP 尊享中' : '订阅中'}
-        </div>
+        <div className={styles.planCtaActive}>{plan === 'vip' ? 'VIP 进行中' : '订阅进行中'}</div>
       ) : (
-        <button className={styles.planCtaButton} style={{ background: meta.gradient }} onClick={onUpgrade}>
+        <button className={styles.planCtaButton} style={{ background: meta.gradient }} onClick={onUpgrade} disabled={disabled}>
           {isVip ? '升级 VIP' : '开通会员'}
           <ArrowRight className={styles.ctaArrow} />
         </button>
@@ -134,11 +125,7 @@ function RedeemCodePanel() {
           placeholder="XXXX-XXXX-XXXX-XXXX"
           maxLength={19}
         />
-        <button
-          className={styles.redeemButton}
-          onClick={handleRedeem}
-          disabled={redeeming || !code.trim()}
-        >
+        <button className={styles.redeemButton} onClick={handleRedeem} disabled={redeeming || !code.trim()}>
           {redeeming ? <Loader2 className="size-4 animate-spin" /> : '兑换'}
         </button>
       </div>
@@ -156,7 +143,7 @@ function InviteSharePanel() {
   useEffect(() => {
     if (!fetchedRef.current) {
       fetchedRef.current = true;
-      fetchShareStats();
+      void fetchShareStats();
     }
   }, [fetchShareStats]);
 
@@ -167,9 +154,9 @@ function InviteSharePanel() {
       setCopied(true);
       toast.success('邀请链接已复制到剪贴板');
       setTimeout(() => setCopied(false), 2000);
-    } else {
-      toast.error(result.message || '生成失败');
+      return;
     }
+    toast.error(result.message || '生成失败');
   }, [generateInviteLink]);
 
   if (!shareStats) return null;
@@ -177,7 +164,7 @@ function InviteSharePanel() {
   return (
     <div className={styles.invitePanel}>
       <h4 className={styles.inviteTitle}>邀请好友</h4>
-      <p className={styles.inviteDesc}>好友注册并开通会员，你将获得 30 天订阅延长</p>
+      <p className={styles.inviteDesc}>好友注册并开通会员后，你可获得 30 天订阅时长奖励</p>
       <div className={styles.inviteStats}>
         <div className={styles.inviteStatItem}>
           <span className={styles.inviteStatValue}>{shareStats.totalInvites}</span>
@@ -205,15 +192,15 @@ function InviteSharePanel() {
 export default function SubscribePage() {
   const isLoggedIn = useAuthGuard();
   const subscription = useSubscriptionStore((s) => s.subscription);
-  const loading = useSubscriptionStore((s) => s.loading);
   const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
   const [showRedeem, setShowRedeem] = useState(false);
+  const [upgradingPlan, setUpgradingPlan] = useState<SubscriptionType | null>(null);
   const subFetchedRef = useRef(false);
 
   useEffect(() => {
     if (isLoggedIn && !subFetchedRef.current) {
       subFetchedRef.current = true;
-      fetchSubscription();
+      void fetchSubscription();
     }
   }, [isLoggedIn, fetchSubscription]);
 
@@ -221,23 +208,44 @@ export default function SubscribePage() {
 
   const currentType = subscription?.subscriptionType ?? 'free';
 
-  const handleUpgrade = (plan: SubscriptionType) => {
-    // TODO: 接入支付后替换为实际支付流程
-    toast.info(`即将跳转到${PLAN_META[plan].label}支付页面...`, {
-      description: '支付功能开发中，可使用兑换码激活',
-    });
-    // 自动展开兑换码面板
-    setShowRedeem(true);
+  const handleUpgrade = async (plan: SubscriptionType) => {
+    if (plan === 'free') return;
+    if (upgradingPlan) return;
+
+    const payPlan = plan === 'vip' ? 'yearly' : 'monthly';
+    const amount = plan === 'vip' ? 199 : 29;
+
+    setUpgradingPlan(plan);
+    try {
+      const res = await fetch('/api/subscribe/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan: payPlan,
+          amount,
+          payment_id: `manual_${Date.now()}`,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({} as { success?: boolean; error?: string; message?: string }));
+      if (!res.ok || !data.success) {
+        toast.error(data.message || data.error || '开通失败，请稍后重试');
+        return;
+      }
+
+      await fetchSubscription();
+      setShowRedeem(false);
+      toast.success(`已成功开通${PLAN_META[plan].label}`);
+    } catch {
+      toast.error('网络异常，开通失败，请稍后重试');
+    } finally {
+      setUpgradingPlan(null);
+    }
   };
 
   return (
-    <AppShell
-      activeKey="account"
-      title="会员中心"
-      description="选择适合你的学习方案，解锁全部功能"
-    >
+    <AppShell activeKey="account" title="会员中心" description="选择适合你的学习方案，解锁更多能力">
       <div className={styles.page}>
-        {/* Current status bar */}
         <div className={styles.statusBar}>
           <div className={styles.statusInfo}>
             <div
@@ -254,47 +262,41 @@ export default function SubscribePage() {
               {currentType === 'vip' ? <Crown className="size-4" /> : currentType === 'sub' ? <Sparkles className="size-4" /> : <Zap className="size-4" />}
               <span>{PLAN_META[currentType].label}</span>
             </div>
-            {subscription && subscription.expiresAt && (
+            {subscription && subscription.expiresAt ? (
               <span className={styles.statusExpiry}>
                 到期时间：{subscription.expiresAt}（剩余 {subscription.remainingDays} 天）
               </span>
-            )}
+            ) : null}
           </div>
-          <button
-            className={styles.redeemToggleButton}
-            onClick={() => setShowRedeem(!showRedeem)}
-          >
+          <button className={styles.redeemToggleButton} onClick={() => setShowRedeem((v) => !v)}>
             <Gift className="size-4" />
             兑换码
           </button>
         </div>
 
-        {/* Redeem panel (toggleable) */}
-        {showRedeem && <RedeemCodePanel />}
+        {showRedeem ? <RedeemCodePanel /> : null}
 
-        {/* Plan cards */}
         <div className={styles.plansGrid}>
           {PLAN_ORDER.map((plan) => (
             <PlanCard
               key={plan}
               plan={plan}
               isCurrent={plan === currentType}
-              onUpgrade={() => handleUpgrade(plan)}
+              onUpgrade={() => void handleUpgrade(plan)}
+              disabled={Boolean(upgradingPlan)}
             />
           ))}
         </div>
 
-        {/* Invite / Share */}
         <InviteSharePanel />
 
-        {/* FAQ */}
         <section className={styles.faqSection}>
           <h3 className={styles.faqTitle}>常见问题</h3>
           {[
-            { q: '订阅到期后怎么办？', a: '到期后自动降级为免费版，数据不受影响。随时可以续期或升级。' },
-            { q: '兑换码可以叠加使用吗？', a: '可以！每张兑换码会在当前有效期基础上延长对应天数。' },
-            { q: '如何获得兑换码？', a: '通过官方活动、邀请好友奖励、或直接联系客服获取。' },
-            { q: '支持退款吗？', a: '订阅购买后不支持退款，请根据需要选择合适的套餐。兑换码未使用前可申请退回。' },
+            { q: '订阅到期后怎么办？', a: '到期后会自动回到免费版，数据不会丢失，可随时续费。' },
+            { q: '兑换码可以叠加吗？', a: '可以，兑换码会在当前有效期基础上叠加对应时长。' },
+            { q: '如何获得兑换码？', a: '可通过活动、邀请奖励或联系客服获取。' },
+            { q: '支持退款吗？', a: '订阅购买后暂不支持退款，请按需选择方案。' },
           ].map((item, idx) => (
             <details key={idx} className={styles.faqItem}>
               <summary className={styles.faqQuestion}>

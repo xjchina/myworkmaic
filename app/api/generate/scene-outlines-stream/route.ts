@@ -36,6 +36,7 @@ import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { getAuthUserId } from '@/lib/server/auth';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -184,6 +185,26 @@ export async function POST(req: NextRequest) {
       researchContext?: string;
       agents?: AgentInfo[];
     };
+    const moderation = await checkCombinedCompliance({
+      inputs: [
+        requirements?.requirement,
+        requirements?.userNickname,
+        requirements?.userBio,
+        pdfText,
+        researchContext,
+      ],
+      scene: 'scene-outlines-stream',
+      userId,
+      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
     requirementSnippet = requirements?.requirement?.substring(0, 60);
     const requirementForGeneration = buildRequirementWithHardRules(
       requirements.requirement,

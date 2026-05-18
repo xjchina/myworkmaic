@@ -62,26 +62,6 @@ interface SubscriptionState {
 
 // ==================== Helpers ====================
 
-const DEFAULT_PERMISSIONS: SubscriptionPermissions = {
-  classroomDaily: 3,
-  knowledgeSteps: 3,
-  exerciseDaily: 5,
-  dataExport: false,
-  analytics: 'day',
-  dataHistory: 'today',
-};
-
-function defaultSubscription(): SubscriptionData {
-  return {
-    subscriptionType: 'free',
-    plan: null,
-    status: 'none',
-    expiresAt: null,
-    remainingDays: 0,
-    permissions: { ...DEFAULT_PERMISSIONS },
-  };
-}
-
 // ==================== Plan definitions (for UI display) ====================
 
 export const PLAN_META: Record<

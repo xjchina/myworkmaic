@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
@@ -48,7 +48,7 @@ function LoadingDots() {
   );
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
@@ -339,5 +339,13 @@ export default function LoginPage() {
         @keyframes dot-pulse { 0%,80%,100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
       `}</style>
     </AppShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>加载中...</div>}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

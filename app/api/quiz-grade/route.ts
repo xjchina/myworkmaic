@@ -10,6 +10,7 @@ import { callLLM } from '@/lib/ai/llm';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 const log = createLogger('Quiz Grade');
 
 interface GradeRequest {
@@ -33,6 +34,19 @@ export async function POST(req: NextRequest) {
     const { question, userAnswer, points, commentPrompt, language } = body;
     questionSnippet = question?.substring(0, 60);
     resolvedPoints = points;
+    const moderation = await checkCombinedCompliance({
+      inputs: [question, userAnswer, commentPrompt],
+      scene: 'quiz-grade',
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
+    }
 
     if (!question || !userAnswer) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'question and userAnswer are required');

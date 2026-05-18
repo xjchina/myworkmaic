@@ -1,29 +1,31 @@
-/* ─── Backdrop ──────────────────────────── */
-
-.backdrop {
+﻿.backdrop {
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: rgba(15,23,42,0.5);
+  background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
 }
 
-/* ─── Modal ─────────────────────────────── */
+.modalWrap {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
 
 .modal {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 9999;
+  position: relative;
   width: 420px;
   max-width: calc(100vw - 32px);
   background: #fff;
   border-radius: 24px;
   padding: 32px 28px 28px;
   box-shadow:
-    0 25px 60px rgba(0,0,0,0.2),
-    0 0 1px rgba(0,0,0,0.1);
+    0 25px 60px rgba(0, 0, 0, 0.2),
+    0 0 1px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -51,7 +53,6 @@
   color: #334155;
 }
 
-/* Header */
 .modalHeader {
   text-align: center;
   margin-bottom: 20px;
@@ -66,7 +67,7 @@
   justify-content: center;
   color: #fff;
   margin-bottom: 14px;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
 }
 
 .modalTitle {
@@ -83,7 +84,6 @@
   margin: 0;
 }
 
-/* Benefits */
 .benefitList {
   list-style: none;
   padding: 0;
@@ -120,7 +120,6 @@
   flex-shrink: 0;
 }
 
-/* Price */
 .priceHighlight {
   text-align: center;
   margin-bottom: 18px;
@@ -145,7 +144,6 @@
   font-weight: 500;
 }
 
-/* CTA */
 .upgradeButton {
   display: inline-flex;
   align-items: center;
@@ -164,7 +162,7 @@
 
 .upgradeButton:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
 .footerHint {

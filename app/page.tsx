@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -245,11 +245,22 @@ export default function HomePage() {
       </div>
       <div className={styles.icpFooter}>
         <div className={styles.openSourceNotice}>
-          <p>本产品基于开源项目 OpenMAIC 开发，遵循 GNU AGPL v3 协议。</p>
+          <p>
+            本产品基于开源项目
+            <a
+              href="https://github.com/THU-MAIC/OpenMAIC"
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className={styles.sourceLink}
+            >
+              OpenMAIC
+            </a>
+            开发，遵循 GNU AGPL v3 协议。
+          </p>
           <p>
             源码获取：
             <a
-              href="https://github.com/THU-MAIC/OpenMAIC"
+              href="https://github.com/xjchina/myworkmaic"
               target="_blank"
               rel="noopener noreferrer nofollow"
               className={styles.sourceLink}
@@ -270,3 +281,4 @@ export default function HomePage() {
     </AppShell>
   );
 }
+
