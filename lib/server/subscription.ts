@@ -3,7 +3,7 @@
  * Handles membership status, permissions, usage tracking, code redemption.
  */
 
-import { eq, and, gte, sql, count } from 'drizzle-orm';
+import { eq, and, gte, sql, count, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users, subscriptions, subscriptionCodes, usageLogs, shareRewards } from '@/lib/db/schema';
 
@@ -43,6 +43,13 @@ export interface UsageCheckResult {
   remaining: number;
   canUse: boolean;
   upgradeTip?: string;
+}
+
+export type BillableFeature = 'classroom' | 'exercise' | 'knowledge';
+
+export interface UsageConsumeResult extends UsageCheckResult {
+  consumed: boolean;
+  consumptionAction: string;
 }
 
 // ─── Permission table ─────────────────────────────────────────────────────────
@@ -91,6 +98,13 @@ const UPGRADE_TIPS: Record<string, Record<SubscriptionType, string>> = {
     vip: '',
   },
 };
+
+const BILLABLE_FEATURES: readonly BillableFeature[] = ['classroom', 'exercise', 'knowledge'];
+const USAGE_CONSUME_ACTION = 'quota_consume';
+
+function isBillableFeature(feature: string): feature is BillableFeature {
+  return BILLABLE_FEATURES.includes(feature as BillableFeature);
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -171,9 +185,17 @@ export async function getSubscriptionStatus(userId: string): Promise<Subscriptio
 
 // ─── Usage tracking ───────────────────────────────────────────────────────────
 
-/** Count today's usage for a feature */
-export async function countTodayUsage(userId: string, feature: string): Promise<number> {
+/** Count today's consumed usage for a feature */
+export async function countTodayUsage(
+  userId: string,
+  feature: string,
+  consumeActions: string[] = [USAGE_CONSUME_ACTION],
+): Promise<number> {
   const start = todayStart();
+  const actionFilter =
+    consumeActions.length === 1
+      ? eq(usageLogs.action, consumeActions[0])
+      : inArray(usageLogs.action, consumeActions);
   const rows = await db
     .select({ cnt: count() })
     .from(usageLogs)
@@ -181,6 +203,7 @@ export async function countTodayUsage(userId: string, feature: string): Promise<
       and(
         eq(usageLogs.userId, userId),
         eq(usageLogs.feature, feature),
+        actionFilter,
         gte(usageLogs.createdAt, start),
       ),
     );
@@ -189,6 +212,10 @@ export async function countTodayUsage(userId: string, feature: string): Promise<
 
 /** Check whether the user can use a feature today */
 export async function checkUsage(userId: string, feature: string): Promise<UsageCheckResult> {
+  if (!isBillableFeature(feature)) {
+    return { feature, usedToday: 0, limitToday: -1, remaining: -1, canUse: true };
+  }
+
   const userRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (userRows.length === 0) {
     return { feature, usedToday: 0, limitToday: 0, remaining: 0, canUse: false };
@@ -232,6 +259,151 @@ export async function checkUsage(userId: string, feature: string): Promise<Usage
       ? undefined
       : UPGRADE_TIPS[feature]?.[effectiveType] ?? '今日次数已用完，升级会员获取更多次数',
   };
+}
+
+export async function consumeUsageWithTransaction(
+  userId: string,
+  feature: BillableFeature,
+  data?: {
+    /**
+     * Deduplicate consumption by this key (per user/day/feature/action).
+     * Recommended: classroom use stageId, exercise use quiz session id, knowledge use topic key.
+     */
+    dedupeKey?: string;
+    subject?: string;
+    durationSeconds?: number;
+  },
+): Promise<UsageConsumeResult> {
+  const dedupeKey = data?.dedupeKey?.trim();
+  const subject = data?.subject ?? null;
+  const start = todayStart();
+
+  return db.transaction(async (tx) => {
+    // Serialize quota checks per user to prevent concurrent over-consumption.
+    await tx.execute(sql`SELECT id FROM users WHERE id = ${userId} LIMIT 1 FOR UPDATE`);
+
+    const userRows = await tx.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (userRows.length === 0) {
+      return {
+        feature,
+        usedToday: 0,
+        limitToday: 0,
+        remaining: 0,
+        canUse: false,
+        consumed: false,
+        consumptionAction: USAGE_CONSUME_ACTION,
+      } satisfies UsageConsumeResult;
+    }
+
+    const user = userRows[0];
+    const effectiveType = resolveType(user);
+    if (effectiveType !== user.subscriptionType) {
+      await tx
+        .update(users)
+        .set({ subscriptionType: 'free', subscriptionExpiresAt: null })
+        .where(eq(users.id, userId));
+    }
+
+    const perms = PERMISSIONS[effectiveType];
+    const limitMap: Record<BillableFeature, number> = {
+      classroom: perms.classroomDaily,
+      exercise: perms.exerciseDaily,
+      knowledge: perms.knowledgeSteps,
+    };
+    const limit = limitMap[feature];
+
+    if (dedupeKey) {
+      const existing = await tx
+        .select({ id: usageLogs.id })
+        .from(usageLogs)
+        .where(
+          and(
+            eq(usageLogs.userId, userId),
+            eq(usageLogs.feature, feature),
+            eq(usageLogs.action, USAGE_CONSUME_ACTION),
+            eq(usageLogs.subject, dedupeKey),
+            gte(usageLogs.createdAt, start),
+          ),
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        const usedToday = await countTodayUsage(userId, feature);
+        const remaining = limit === -1 ? -1 : Math.max(0, limit - usedToday);
+        return {
+          feature,
+          usedToday,
+          limitToday: limit,
+          remaining,
+          canUse: true,
+          consumed: false,
+          consumptionAction: USAGE_CONSUME_ACTION,
+        } satisfies UsageConsumeResult;
+      }
+    }
+
+    if (limit !== -1) {
+      const usedRows = await tx
+        .select({ cnt: count() })
+        .from(usageLogs)
+        .where(
+          and(
+            eq(usageLogs.userId, userId),
+            eq(usageLogs.feature, feature),
+            eq(usageLogs.action, USAGE_CONSUME_ACTION),
+            gte(usageLogs.createdAt, start),
+          ),
+        );
+      const usedToday = Number(usedRows[0]?.cnt ?? 0);
+      const remainingBeforeConsume = Math.max(0, limit - usedToday);
+      if (remainingBeforeConsume <= 0) {
+        return {
+          feature,
+          usedToday,
+          limitToday: limit,
+          remaining: 0,
+          canUse: false,
+          upgradeTip:
+            UPGRADE_TIPS[feature]?.[effectiveType] ?? '今日次数已用完，升级会员获取更多次数',
+          consumed: false,
+          consumptionAction: USAGE_CONSUME_ACTION,
+        } satisfies UsageConsumeResult;
+      }
+    }
+
+    await tx.insert(usageLogs).values({
+      id: generateId(),
+      userId,
+      feature,
+      action: USAGE_CONSUME_ACTION,
+      subject: dedupeKey || subject,
+      durationSeconds: data?.durationSeconds ?? null,
+    });
+
+    const usedAfterRows = await tx
+      .select({ cnt: count() })
+      .from(usageLogs)
+      .where(
+        and(
+          eq(usageLogs.userId, userId),
+          eq(usageLogs.feature, feature),
+          eq(usageLogs.action, USAGE_CONSUME_ACTION),
+          gte(usageLogs.createdAt, start),
+        ),
+      );
+    const usedAfter = Number(usedAfterRows[0]?.cnt ?? 0);
+    const remaining = limit === -1 ? -1 : Math.max(0, limit - usedAfter);
+
+    return {
+      feature,
+      usedToday: usedAfter,
+      limitToday: limit,
+      remaining,
+      canUse: true,
+      consumed: true,
+      consumptionAction: USAGE_CONSUME_ACTION,
+    } satisfies UsageConsumeResult;
+  });
 }
 
 /** Write a usage log entry */

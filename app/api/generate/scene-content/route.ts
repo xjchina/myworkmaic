@@ -18,6 +18,8 @@ import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generatio
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { getAuthUserId } from '@/lib/server/auth';
+import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 
 const log = createLogger('Scene Content API');
 
@@ -27,6 +29,11 @@ export async function POST(req: NextRequest) {
   let outlineTitle: string | undefined;
   let resolvedModelString: string | undefined;
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再生成课堂');
+    }
+
     const body = await req.json();
     const {
       outline: rawOutline,
@@ -65,6 +72,18 @@ export async function POST(req: NextRequest) {
     }
     if (!stageId) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'stageId is required');
+    }
+
+    const consumeResult = await consumeUsageWithTransaction(userId, 'classroom', {
+      dedupeKey: `classroom:${stageId}`,
+      subject: rawOutline?.title || stageId,
+    });
+    if (!consumeResult.canUse) {
+      return apiError(
+        'INVALID_REQUEST',
+        429,
+        consumeResult.upgradeTip ?? '今日教案课堂额度已用完，请升级会员后继续使用',
+      );
     }
 
     const outline: SceneOutline = { ...rawOutline };

@@ -11,6 +11,7 @@ import type { PBLAgent, PBLIssue } from '@/lib/pbl/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { getAuthUserId } from '@/lib/server/auth';
 const log = createLogger('PBL Chat');
 
 interface PBLChatRequest {
@@ -26,6 +27,11 @@ export async function POST(req: NextRequest) {
   let agentName: string | undefined;
   let resolvedAgentType: string | undefined;
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再发起讨论');
+    }
+
     const body = (await req.json()) as PBLChatRequest;
     const { message, agent, currentIssue, recentMessages, userRole, agentType } = body;
     agentName = agent?.name;

@@ -13,7 +13,7 @@ import {
   saveQuizSession,
   type QuizSessionRecord,
 } from '@/lib/quiz/persistence';
-import { DEMO_QUIZ_QUESTIONS, DEMO_QUIZ_SUMMARY } from '@/lib/data/demo-data';
+import { DEMO_QUIZ_PRESETS, type DemoQuizPreset } from '@/lib/data/demo-quiz-subjects';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
 
@@ -99,6 +99,14 @@ export function QuizWorkbench() {
     }
   };
 
+  const handleBackToExerciseHome = () => {
+    setPdfFile(null);
+    setQuestions(null);
+    setError(null);
+    setIsGenerating(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleGenerateQuiz = async () => {
     if (!(await checkAndUpgrade('exercise'))) {
       return;
@@ -115,6 +123,8 @@ export function QuizWorkbench() {
       const settings = useSettingsStore.getState();
       const formData = new FormData();
       formData.append('pdf', pdfFile);
+      formData.append('usageFeature', 'exercise');
+      formData.append('usageKey', `exercise-${Date.now()}-${nanoid(6)}`);
       if (settings.pdfProviderId) formData.append('providerId', settings.pdfProviderId);
 
       const providerConfig = settings.pdfProvidersConfig?.[settings.pdfProviderId];
@@ -171,6 +181,36 @@ export function QuizWorkbench() {
     }
   };
 
+  const startDemoPreset = async (preset: DemoQuizPreset) => {
+    if (!(await checkAndUpgrade('exercise'))) return;
+    const nextSceneId = `quiz-demo-${preset.id}-${nanoid(8)}`;
+    const nextSessionId = `quiz-session-demo-${preset.id}-${nanoid(8)}`;
+
+    setQuestions(preset.questions);
+    setSceneId(nextSceneId);
+    setSceneTitle(preset.sourceName);
+    setActiveSessionId(nextSessionId);
+    setSummary(preset.summary);
+
+    setSavedSessions(
+      saveQuizSession({
+        id: nextSessionId,
+        sceneId: nextSceneId,
+        sourceName: preset.sourceName,
+        summary: preset.summary,
+        questionCount: preset.questions.length,
+        questions: preset.questions,
+      }),
+    );
+
+    void trackUsage({
+      feature: 'exercise',
+      action: 'quiz_generated',
+      subject: preset.subject,
+      durationSeconds: preset.questions.length,
+    });
+  };
+
   return (
     <div className="exercise-workbench">
       <section className="flow-section">
@@ -193,10 +233,10 @@ export function QuizWorkbench() {
         </div>
       </section>
 
-      {/* ── Two-column layout for initial state ── */}
+      {/* 鈹€鈹€ Two-column layout for initial state 鈹€鈹€ */}
       {!pdfFile && !questions ? (
         <div className="main-layout">
-          {/* Left sidebar — history */}
+          {/* Left sidebar 鈥?history */}
           <aside className="history-sidebar">
             <section className="history-section">
               <div className="history-head">
@@ -232,23 +272,35 @@ export function QuizWorkbench() {
           <div className="main-content">
             <section className="demo-quiz-section">
               <div className="demo-quiz-badge"><Sparkles className="size-3.5" />内置示例</div>
-              <div className="demo-quiz-title">计算机基础综合练习</div>
-              <div className="demo-quiz-desc">{DEMO_QUIZ_SUMMARY}</div>
-              <div className="demo-quiz-meta">
-                <span className="meta-single">单选 ×5</span>
-                <span className="meta-multiple">多选 ×2</span>
-                <span className="meta-short">简答 ×1</span>
-                <span className="meta-total">共 {DEMO_QUIZ_QUESTIONS.reduce((s, q) => s + (q.points ?? 1), 0)} 分</span>
+              <div className="demo-quiz-grid">
+                {DEMO_QUIZ_PRESETS.map((preset) => {
+                  const totalPoints = preset.questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
+                  const singleCount = preset.questions.filter((q) => q.type === 'single').length;
+                  const multipleCount = preset.questions.filter((q) => q.type === 'multiple').length;
+                  const shortCount = preset.questions.filter((q) => q.type === 'short_answer').length;
+                  return (
+                    <article key={preset.id} className="demo-quiz-card">
+                      <div className="demo-quiz-title">{preset.title}</div>
+                      <div className="demo-quiz-desc">{preset.summary}</div>
+                      <div className="demo-quiz-meta">
+                        <span className="meta-single">单选 ×{singleCount}</span>
+                        <span className="meta-multiple">多选 ×{multipleCount}</span>
+                        <span className="meta-short">简答 ×{shortCount}</span>
+                        <span className="meta-total">共 {totalPoints} 分</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-demo-quiz"
+                        onClick={() => {
+                          void startDemoPreset(preset);
+                        }}
+                      >
+                        开始练习
+                      </button>
+                    </article>
+                  );
+                })}
               </div>
-              <button type="button" className="btn-demo-quiz" onClick={async () => {
-                if (!(await checkAndUpgrade('exercise'))) return;
-                const nid = `quiz-demo-${nanoid(8)}`;
-                const nsid = `quiz-session-demo-${nanoid(8)}`;
-                setQuestions(DEMO_QUIZ_QUESTIONS);
-                setSceneId(nid); setSceneTitle('内置示例练习'); setActiveSessionId(nsid); setSummary(DEMO_QUIZ_SUMMARY);
-                setSavedSessions(saveQuizSession({ id: nsid, sceneId: nid, sourceName: '内置示例练习', summary: DEMO_QUIZ_SUMMARY, questionCount: DEMO_QUIZ_QUESTIONS.length, questions: DEMO_QUIZ_QUESTIONS }));
-                void trackUsage({ feature: 'exercise', action: 'quiz_generated', subject: '内置示例练习', durationSeconds: DEMO_QUIZ_QUESTIONS.length });
-              }}>开始练习</button>
             </section>
             <section className={`upload-section ${dragover ? 'dragover' : ''}`}
               onClick={() => fileInputRef.current?.click()}
@@ -304,9 +356,14 @@ export function QuizWorkbench() {
               <h3>{'\u4e92\u52a8\u7ec3\u4e60'}</h3>
               <p>{summary ?? `\u5171 ${questions.length} \u9898\uff0c\u5f00\u59cb\u4f5c\u7b54`}</p>
             </div>
-            <button type="button" className="btn btn-outline" onClick={handleReset}>
-              {'\u91cd\u65b0\u4e0a\u4f20'}
-            </button>
+            <div className="practice-actions">
+              <button type="button" className="btn btn-outline" onClick={handleBackToExerciseHome}>
+                {'\u8fd4\u56de\u7ec3\u4e60\u9996\u9875'}
+              </button>
+              <button type="button" className="btn btn-outline" onClick={handleReset}>
+                {'\u91cd\u65b0\u4e0a\u4f20'}
+              </button>
+            </div>
           </div>
           <div className="quiz-host">
             <QuizView key={sceneId} questions={questions} sceneId={sceneId} sceneTitle={sceneTitle ?? undefined} />
@@ -369,11 +426,29 @@ export function QuizWorkbench() {
           font-weight: 700;
           margin-bottom: 12px;
         }
+        .demo-quiz-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+          gap: 14px;
+        }
+        .demo-quiz-card {
+          background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+          border: 1px solid #e2e8f0;
+          border-radius: 14px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
         .demo-quiz-title {
           font-size: 20px;
           font-weight: 700;
           color: #1a365d;
           margin-bottom: 6px;
+        }
+        .demo-quiz-card .demo-quiz-title {
+          font-size: 16px;
+          margin-bottom: 0;
         }
         .demo-quiz-desc {
           font-size: 14px;
@@ -422,6 +497,7 @@ export function QuizWorkbench() {
           border: none;
           cursor: pointer;
           transition: all 0.2s;
+          width: fit-content;
         }
         .btn-demo-quiz:hover {
           transform: translateY(-1px);
@@ -685,6 +761,10 @@ export function QuizWorkbench() {
           display: flex;
           gap: 12px;
         }
+        .practice-actions {
+          display: flex;
+          gap: 12px;
+        }
         .btn {
           padding: 10px 20px;
           border-radius: 10px;
@@ -777,6 +857,10 @@ export function QuizWorkbench() {
           .practice-header .btn {
             width: 100%;
           }
+          .practice-actions {
+            width: 100%;
+            flex-direction: column;
+          }
           .quiz-host {
             min-height: 520px;
             height: auto;
@@ -787,3 +871,4 @@ export function QuizWorkbench() {
     </div>
   );
 }
+

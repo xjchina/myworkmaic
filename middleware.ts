@@ -49,8 +49,14 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // Whitelist: access-code endpoints, health check
-  if (pathname.startsWith('/api/access-code/') || pathname === '/api/health') {
+  // Whitelist: access-code endpoints, health check, auth endpoints
+  // Auth APIs must be reachable before access-cookie exists,
+  // otherwise captcha/login/register flow is blocked.
+  if (
+    pathname.startsWith('/api/access-code/') ||
+    pathname.startsWith('/api/auth/') ||
+    pathname === '/api/health'
+  ) {
     return NextResponse.next();
   }
 

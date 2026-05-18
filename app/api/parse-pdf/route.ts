@@ -6,12 +6,19 @@ import type { ParsedPdfContent } from '@/lib/types/pdf';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { getAuthUserId } from '@/lib/server/auth';
+import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 const log = createLogger('Parse PDF');
 
 export async function POST(req: NextRequest) {
   let pdfFileName: string | undefined;
   let resolvedProviderId: string | undefined;
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再使用 PDF 解析');
+    }
+
     const contentType = req.headers.get('content-type') || '';
     if (!contentType.includes('multipart/form-data')) {
       log.error('Invalid Content-Type for PDF upload:', contentType);
@@ -27,9 +34,25 @@ export async function POST(req: NextRequest) {
     const providerId = formData.get('providerId') as PDFProviderId | null;
     const apiKey = formData.get('apiKey') as string | null;
     const baseUrl = formData.get('baseUrl') as string | null;
+    const usageFeature = formData.get('usageFeature') as string | null;
+    const usageKey = formData.get('usageKey') as string | null;
 
     if (!pdfFile) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'No PDF file provided');
+    }
+
+    if (usageFeature === 'exercise') {
+      const consumeResult = await consumeUsageWithTransaction(userId, 'exercise', {
+        dedupeKey: usageKey?.trim() || undefined,
+        subject: pdfFile.name,
+      });
+      if (!consumeResult.canUse) {
+        return apiError(
+          'INVALID_REQUEST',
+          429,
+          consumeResult.upgradeTip ?? '今日互动练习额度已用完，请升级会员后继续使用',
+        );
+      }
     }
 
     // providerId is required from the client — no server-side store to fall back to

@@ -35,6 +35,7 @@ import type {
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { getAuthUserId } from '@/lib/server/auth';
 const log = createLogger('Outlines Stream');
 
 export const maxDuration = 300;
@@ -155,6 +156,11 @@ export async function POST(req: NextRequest) {
   let requirementSnippet: string | undefined;
   let resolvedModelString: string | undefined;
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再生成课堂大纲');
+    }
+
     const body = await req.json();
 
     // Get API configuration from request headers/body

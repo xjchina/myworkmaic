@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto';
+﻿import { createHash, randomUUID } from 'crypto';
 import { and, eq, gte, gt, sql } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { authBans, authEvents, captchaTickets } from '@/lib/db/schema';
@@ -30,9 +30,53 @@ type CaptchaVerifyInput = {
   captchaAnswer?: string;
 };
 
+type CaptchaTicketRecord = {
+  id: string;
+  answer: string;
+  issuedIp: string;
+  issuedDevice: string;
+  attempts: number;
+  expiresAt: Date;
+  createdAt: Date;
+};
+
 const CAPTCHA_EXPIRE_SECONDS = 5 * 60;
 const CAPTCHA_MAX_ATTEMPTS = 5;
 const CAPTCHA_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function getMemoryCaptchaStore() {
+  const holder = globalThis as typeof globalThis & {
+    __openmaicCaptchaStore?: Map<string, CaptchaTicketRecord>;
+  };
+  if (!holder.__openmaicCaptchaStore) {
+    holder.__openmaicCaptchaStore = new Map<string, CaptchaTicketRecord>();
+  }
+  return holder.__openmaicCaptchaStore;
+}
+
+function pruneMemoryCaptchaStore() {
+  const store = getMemoryCaptchaStore();
+  const now = Date.now();
+  for (const [id, ticket] of store.entries()) {
+    if (ticket.expiresAt.getTime() <= now) {
+      store.delete(id);
+    }
+  }
+}
+
+function setMemoryCaptchaTicket(ticket: CaptchaTicketRecord) {
+  pruneMemoryCaptchaStore();
+  getMemoryCaptchaStore().set(ticket.id, ticket);
+}
+
+function getMemoryCaptchaTicket(id: string) {
+  pruneMemoryCaptchaStore();
+  return getMemoryCaptchaStore().get(id);
+}
+
+function deleteMemoryCaptchaTicket(id: string) {
+  getMemoryCaptchaStore().delete(id);
+}
 
 const RATE_LIMITS: Record<Exclude<AuthAction, 'captcha'>, Array<{ scope: AuthScope; limit: number; windowSec: number; message: string }>> = {
   send_code: [
@@ -317,30 +361,40 @@ function buildCaptchaSvg(text: string): string {
     })
     .join('');
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-  <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="#cbd5e1" />
-  ${lines}
-  ${dots}
-  ${letters}
-</svg>`;
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `  <rect x="0" y="0" width="${width}" height="${height}" rx="8" fill="#f8fafc" stroke="#cbd5e1" />`,
+    `  ${lines}`,
+    `  ${dots}`,
+    `  ${letters}`,
+    '</svg>',
+  ].join('\n');
 }
 
 export async function issueCaptcha(request: Request): Promise<CaptchaIssueResult> {
   const now = new Date();
   const captchaId = randomUUID();
   const answer = randomCaptchaText(4);
+  const issuedIp = getClientIp(request);
+  const issuedDevice = getDeviceId(request);
   const expiresAt = new Date(now.getTime() + CAPTCHA_EXPIRE_SECONDS * 1000);
 
-  await db.insert(captchaTickets).values({
+  const payload: CaptchaTicketRecord = {
     id: captchaId,
     answer,
-    issuedIp: getClientIp(request),
-    issuedDevice: getDeviceId(request),
+    issuedIp,
+    issuedDevice,
     attempts: 0,
     expiresAt,
     createdAt: now,
-  });
+  };
+
+  try {
+    await db.insert(captchaTickets).values(payload);
+  } catch {
+    setMemoryCaptchaTicket(payload);
+  }
 
   const svg = buildCaptchaSvg(answer);
   const imageDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
@@ -350,7 +404,6 @@ export async function issueCaptcha(request: Request): Promise<CaptchaIssueResult
     expiresInSeconds: CAPTCHA_EXPIRE_SECONDS,
   };
 }
-
 export async function verifyCaptcha(input: CaptchaVerifyInput): Promise<SecurityResult> {
   const captchaId = (input.captchaId || '').trim();
   const captchaAnswer = (input.captchaAnswer || '').trim().toUpperCase();
@@ -359,38 +412,84 @@ export async function verifyCaptcha(input: CaptchaVerifyInput): Promise<Security
     return { ok: false, message: '请输入图形验证码。' };
   }
 
-  const rows = await db.select().from(captchaTickets).where(eq(captchaTickets.id, captchaId)).limit(1);
-  const ticket = rows[0];
+  let ticket: CaptchaTicketRecord | undefined;
+  let ticketSource: 'db' | 'memory' = 'db';
+
+  try {
+    const rows = await db.select().from(captchaTickets).where(eq(captchaTickets.id, captchaId)).limit(1);
+    if (rows[0]) {
+      ticket = {
+        id: rows[0].id,
+        answer: rows[0].answer,
+        issuedIp: rows[0].issuedIp,
+        issuedDevice: rows[0].issuedDevice,
+        attempts: rows[0].attempts,
+        expiresAt: rows[0].expiresAt,
+        createdAt: rows[0].createdAt,
+      };
+    }
+  } catch {
+    ticketSource = 'memory';
+  }
+
+  if (!ticket) {
+    ticket = getMemoryCaptchaTicket(captchaId);
+    if (ticket) ticketSource = 'memory';
+  }
 
   if (!ticket) {
     return { ok: false, message: '图形验证码不存在或已失效，请刷新后重试。' };
   }
 
+  const deleteTicket = async () => {
+    if (ticketSource === 'memory') {
+      deleteMemoryCaptchaTicket(captchaId);
+      return;
+    }
+    try {
+      await db.delete(captchaTickets).where(eq(captchaTickets.id, captchaId));
+    } catch {
+      deleteMemoryCaptchaTicket(captchaId);
+    }
+  };
+
+  const increaseAttempt = async () => {
+    if (ticketSource === 'memory') {
+      setMemoryCaptchaTicket({ ...ticket!, attempts: ticket!.attempts + 1 });
+      return;
+    }
+    try {
+      await db
+        .update(captchaTickets)
+        .set({ attempts: ticket!.attempts + 1 })
+        .where(eq(captchaTickets.id, captchaId));
+    } catch {
+      setMemoryCaptchaTicket({ ...ticket!, attempts: ticket!.attempts + 1 });
+    }
+  };
+
   if (new Date() > ticket.expiresAt) {
-    await db.delete(captchaTickets).where(eq(captchaTickets.id, captchaId));
+    await deleteTicket();
     return { ok: false, message: '图形验证码已过期，请刷新后重试。' };
   }
 
   if (ticket.attempts >= CAPTCHA_MAX_ATTEMPTS) {
-    await db.delete(captchaTickets).where(eq(captchaTickets.id, captchaId));
+    await deleteTicket();
     return { ok: false, message: '图形验证码尝试次数过多，请刷新后重试。' };
   }
 
   const ip = getClientIp(input.request);
   const deviceId = getDeviceId(input.request);
   if (ticket.issuedIp !== ip || ticket.issuedDevice !== deviceId) {
-    await db.delete(captchaTickets).where(eq(captchaTickets.id, captchaId));
+    await deleteTicket();
     return { ok: false, message: '图形验证码校验环境已变化，请刷新后重试。' };
   }
 
   if (ticket.answer !== captchaAnswer) {
-    await db
-      .update(captchaTickets)
-      .set({ attempts: ticket.attempts + 1 })
-      .where(eq(captchaTickets.id, captchaId));
+    await increaseAttempt();
     return { ok: false, message: '图形验证码错误。' };
   }
 
-  await db.delete(captchaTickets).where(eq(captchaTickets.id, captchaId));
+  await deleteTicket();
   return { ok: true };
 }

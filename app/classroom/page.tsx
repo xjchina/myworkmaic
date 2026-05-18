@@ -42,6 +42,49 @@ export default function ClassroomPage() {
               进入示例课堂
             </Link>
           </article>
+
+          <article className="info-card demo-card-sets">
+            <div className="demo-badge-sets">
+              <Sparkles className="size-3.5" />
+              内置示例
+            </div>
+            <div className="card-title">什么是一元一次方程</div>
+            <div className="card-desc">
+              课堂主题：什么是一元一次方程。已加入内置示例课堂，点击可直接进入复习。
+            </div>
+            <div className="demo-meta">
+              <span className="meta-tag slides">课堂示例</span>
+              <span className="meta-tag quiz">可互动</span>
+              <span className="meta-tag discuss">可讨论</span>
+            </div>
+            <Link
+              className="action-btn demo-action-sets"
+              href="/classroom/demo-linear"
+            >
+              <BookOpen className="size-4" />
+              进入示例课堂
+            </Link>
+          </article>
+
+          <article className="info-card demo-card-sets">
+            <div className="demo-badge-sets">
+              <Sparkles className="size-3.5" />
+              内置示例
+            </div>
+            <div className="card-title">生物</div>
+            <div className="card-desc">
+              人教版生物学必修1示例课堂，按中文教学流程展示，且不包含随堂测验。
+            </div>
+            <div className="demo-meta">
+              <span className="meta-tag slides">中文教学</span>
+              <span className="meta-tag quiz">无测验</span>
+              <span className="meta-tag discuss">可讨论</span>
+            </div>
+            <Link className="action-btn demo-action-sets" href="/classroom/demo-biology">
+              <BookOpen className="size-4" />
+              进入示例课堂
+            </Link>
+          </article>
         </div>
       </div>
 

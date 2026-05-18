@@ -1,7 +1,9 @@
 import { NextRequest } from 'next/server';
+import { apiError } from '@/lib/server/api-response';
+import { getAuthUserId } from '@/lib/server/auth';
+import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 
 const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
-const API_KEY = 'sk-f5121ae7f8614c2f91772b6005e4bb31';
 
 // ─── Subject-specific system prompts ────────────────────────────
 
@@ -548,9 +550,39 @@ function isFinalSummary(text: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const { chapter, steps, dialogueHistory, subject, currentStep } = await request.json();
+    const requestApiKey = request.headers.get('x-api-key')?.trim() || '';
+    const effectiveApiKey = requestApiKey || process.env.DEEPSEEK_API_KEY || '';
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再使用知识梳理');
+    }
+    if (!effectiveApiKey) {
+      return apiError('MISSING_API_KEY', 500, '未配置 API Key，请先在设置中填写，或在服务器配置 DEEPSEEK_API_KEY');
+    }
+
+    const { chapter, steps, dialogueHistory, subject, currentStep, sessionKey } = await request.json();
     const subjectName = subject || '数学';
     const systemPrompt = buildPrompt(subjectName, chapter || '');
+    const isDialogMode = Array.isArray(dialogueHistory);
+    const isDialogStart = isDialogMode && dialogueHistory.length === 0;
+    const isFormSubmit = !isDialogMode && !!steps;
+
+    if (isDialogStart || isFormSubmit) {
+      const consumeResult = await consumeUsageWithTransaction(userId, 'knowledge', {
+        dedupeKey:
+          typeof sessionKey === 'string' && sessionKey.trim()
+            ? `knowledge:${sessionKey.trim()}`
+            : undefined,
+        subject: `${subjectName}:${chapter || '未命名主题'}`,
+      });
+      if (!consumeResult.canUse) {
+        return apiError(
+          'INVALID_REQUEST',
+          429,
+          consumeResult.upgradeTip ?? '今日知识梳理额度已用完，请升级会员后继续使用',
+        );
+      }
+    }
 
     if (dialogueHistory && Array.isArray(dialogueHistory)) {
       // Dialogue mode: forward the conversation
@@ -572,12 +604,12 @@ export async function POST(request: NextRequest) {
 
       const response = await fetch(DEEPSEEK_API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApiKey}` },
         body: JSON.stringify({ model: 'deepseek-chat', messages, stream: false, max_tokens: 4096, temperature: 0.7 }),
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.text();
         return Response.json({ error: `API error: ${response.status}` }, { status: response.status });
       }
 
@@ -603,7 +635,7 @@ export async function POST(request: NextRequest) {
 
     const response = await fetch(DEEPSEEK_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${API_KEY}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApiKey}` },
       body: JSON.stringify({
         model: 'deepseek-chat',
         messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],

@@ -188,6 +188,36 @@
   font-size: 14px;
   margin-top: 4px;
 }
+.icpFooter {
+  margin-top: 24px;
+  text-align: center;
+}
+.openSourceNotice {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.7;
+}
+.openSourceNotice p {
+  margin: 0;
+}
+.sourceLink {
+  margin-left: 6px;
+  color: #475569;
+  text-decoration: underline;
+}
+.sourceLink:hover {
+  color: #1e293b;
+}
+.icpLink {
+  font-size: 12px;
+  color: #94a3b8;
+  text-decoration: none;
+}
+.icpLink:hover {
+  color: #64748b;
+  text-decoration: underline;
+}
 @media (max-width: 1200px) {
   .featureGrid {
     grid-template-columns: repeat(2, 1fr);

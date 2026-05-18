@@ -20,6 +20,7 @@ import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 import { resolveModel } from '@/lib/server/resolve-model';
 import type { ThinkingConfig } from '@/lib/types/provider';
+import { getAuthUserId } from '@/lib/server/auth';
 const log = createLogger('Chat API');
 
 // Allow streaming responses up to 60 seconds
@@ -47,6 +48,11 @@ export async function POST(req: NextRequest) {
   let chatMessageCount: number | undefined;
 
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再进行对话');
+    }
+
     const body: StatelessChatRequest = await req.json();
     chatModel = body.model;
     chatMessageCount = body.messages?.length;

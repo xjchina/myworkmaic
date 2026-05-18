@@ -73,6 +73,52 @@ function StartScreen({
 
   return (
     <div className="start-screen">
+      <aside className="start-guide">
+        <div className="guide-badge">{'\u5b66\u4e60\u65b9\u6cd5\u63a8\u8350'}</div>
+        <h3 className="guide-title">{'\u767d\u7eb8\u56de\u5fc6\u6cd5'}</h3>
+        <p className="guide-desc">
+          {'\u4e0d\u770b\u8d44\u6599\uff0c\u5148\u5199\u4e0b\u4eca\u5929\u7684\u6838\u5fc3\u5185\u5bb9\uff0c\u518d\u5bf9\u7167\u8bb2\u4e49\u8865\u5168\u9057\u6f0f\u3002'}
+          <br />
+          {'\u901a\u8fc7\u201c\u5148\u56de\u5fc6\u540e\u6821\u5bf9\u201d\uff0c\u66f4\u5bb9\u6613\u53d1\u73b0\u77e5\u8bc6\u76f2\u70b9\uff0c\u63d0\u5347\u8bb0\u5fc6\u7a33\u5b9a\u6027\u3002'}
+        </p>
+        <div className="guide-steps">
+          {[
+            '\u7b2c1\u6b65\uff1a\u4e0d\u7ffb\u4e66\uff0c\u51ed\u8bb0\u5fc6\u5217\u51fa\u77e5\u8bc6\u70b9',
+            '\u7b2c2\u6b65\uff1a\u5bf9\u7167\u8bb2\u4e49\uff0c\u8865\u5168\u7f3a\u6f0f\u4e0e\u9519\u8bef',
+            '\u7b2c3\u6b65\uff1a\u6807\u8bb0\u91cd\u70b9\u548c\u6613\u9519\u70b9',
+            '\u7b2c4\u6b65\uff1a24\u5c0f\u65f6\u518d\u590d\u76d8\u4e00\u6b21',
+          ].map((item, idx) => (
+            <div key={item} className="guide-step">
+              <span className="guide-step-num">{idx + 1}</span>
+              <span>{item}</span>
+            </div>
+          ))}
+        </div>
+        <div className="guide-fill">
+          <div className="guide-tip-card">
+            <div className="guide-tip-title">{'\u4eca\u65e5\u6267\u884c\u6e05\u5355'}</div>
+            <ul className="guide-tip-list">
+              <li>{'\u5148\u56de\u5fc6\uff0c\u518d\u770b\u8bb2\u4e49\u6821\u5bf9'}</li>
+              <li>{'\u6bcf\u4e00\u6b65\u81f3\u5c11\u5199\u51fa 2 \u6761\u5173\u952e\u70b9'}</li>
+              <li>{'\u5b8c\u6210\u540e\u7acb\u5373\u8fdb\u5165 AI \u5bf9\u8bdd\u68c0\u9a8c'}</li>
+            </ul>
+          </div>
+          <div className="guide-tip-card light">
+            <div className="guide-tip-title">{'\u5e38\u89c1\u9519\u8bef\u63d0\u9192'}</div>
+            <ul className="guide-tip-list">
+              <li>{'\u53ea\u5199\u7ed3\u8bba\uff0c\u6ca1\u5199\u601d\u8def'}</li>
+              <li>{'\u6df7\u6dc6\u516c\u5f0f\u9002\u7528\u6761\u4ef6'}</li>
+              <li>{'\u6ca1\u6709\u590d\u76d8\u201c\u4e3a\u4ec0\u4e48\u9519\u201d'}</li>
+            </ul>
+          </div>
+        </div>
+        <div className="guide-bottom">
+          <div className="guide-bottom-title">{'\u767d\u7eb8\u56de\u5fc6\u76ee\u6807'}</div>
+          <div className="guide-bottom-desc">
+            {'\u4e0d\u662f\u80cc\u7b54\u6848\uff0c\u800c\u662f\u8bad\u7ec3\u4f60\u7684\u77e5\u8bc6\u63d0\u53d6\u80fd\u529b\u3002'}
+          </div>
+        </div>
+      </aside>
       <div className="start-card">
         <div className="start-icon">{subjectIcon}</div>
         <h2>📄 白纸回忆法</h2>
@@ -132,30 +178,151 @@ function StartScreen({
         </button>
       </div>
       <style jsx>{`
-        .start-screen { display: flex; justify-content: center; padding: 30px 0; }
-        .start-card { width: 540px; max-width: 100%; background: #fff; border-radius: 24px; padding: 36px 32px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
-        .start-icon { font-size: 64px; margin-bottom: 10px; }
-        h2 { font-size: 26px; color: #0f172a; margin: 0 0 6px; }
-        .start-desc { color: #64748b; font-size: 14px; line-height: 1.7; margin: 0 0 20px; }
-        .start-steps-preview { text-align: left; background: #f8fafc; border-radius: 14px; padding: 14px 18px; margin-bottom: 20px; }
-        .preview-step { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 14px; color: #334155; }
+        .start-screen {
+          display: grid;
+          grid-template-columns: minmax(420px, 48%) minmax(620px, 52%);
+          gap: 26px;
+          align-items: stretch;
+          width: 100%;
+          height: calc(100dvh - 200px);
+          max-height: calc(100dvh - 200px);
+          overflow: hidden;
+          padding: 0;
+        }
+        .start-guide {
+          position: sticky;
+          top: 16px;
+          align-self: stretch;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+          border: 1px solid #dbeafe;
+          border-radius: 18px;
+          padding: 18px 18px;
+          min-height: 0;
+          height: 100%;
+          overflow: hidden;
+          box-sizing: border-box;
+        }
+        .guide-badge {
+          display: inline-flex;
+          align-items: center;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 8px;
+        }
+        .guide-title { margin: 0 0 8px; font-size: 24px; color: #0f172a; }
+        .guide-desc { margin: 0 0 12px; font-size: 13px; color: #475569; line-height: 1.65; }
+        .guide-steps { display: flex; flex-direction: column; gap: 8px; }
+        .guide-step {
+          display: flex;
+          align-items: flex-start;
+          gap: 8px;
+          font-size: 13px;
+          color: #1e293b;
+          line-height: 1.55;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          padding: 8px 10px;
+        }
+        .guide-step-num {
+          width: 24px;
+          height: 24px;
+          border-radius: 8px;
+          background: #dbeafe;
+          color: #1d4ed8;
+          font-size: 12px;
+          font-weight: 700;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          margin-top: 1px;
+        }
+        .guide-fill {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 8px;
+          margin-top: 4px;
+        }
+        .guide-tip-card {
+          border-radius: 12px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          padding: 10px 10px;
+        }
+        .guide-tip-card.light {
+          background: #f9fafb;
+        }
+        .guide-tip-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #0f172a;
+          margin-bottom: 6px;
+        }
+        .guide-tip-list {
+          margin: 0;
+          padding-left: 18px;
+          color: #334155;
+          font-size: 12px;
+          line-height: 1.55;
+        }
+        .guide-bottom {
+          margin-top: auto;
+          border-radius: 14px;
+          border: 1px solid #bfdbfe;
+          background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+          padding: 10px 12px;
+        }
+        .guide-bottom-title {
+          font-size: 14px;
+          font-weight: 700;
+          color: #1e3a8a;
+          margin-bottom: 2px;
+        }
+        .guide-bottom-desc {
+          font-size: 12px;
+          color: #1e40af;
+          line-height: 1.5;
+        }
+        .start-card { width: 100%; max-width: none; justify-self: end; background: #fff; border-radius: 24px; padding: 18px 18px; text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,0.06); height: 100%; overflow: hidden; box-sizing: border-box; }
+        .start-icon { font-size: 50px; margin-bottom: 6px; line-height: 1; }
+        h2 { font-size: 22px; color: #0f172a; margin: 0 0 4px; }
+        .start-desc { color: #64748b; font-size: 12px; line-height: 1.45; margin: 0 0 10px; }
+        .start-steps-preview { text-align: left; background: #f8fafc; border-radius: 12px; padding: 8px 10px; margin-bottom: 10px; }
+        .preview-step { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 12px; color: #334155; }
         .step-num { width: 24px; height: 24px; border-radius: 6px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #475569; flex-shrink: 0; }
 
-        .mode-selector { display: flex; gap: 10px; margin-bottom: 20px; }
-        .mode-btn { flex: 1; padding: 14px 10px; border-radius: 14px; border: 2px solid #e2e8f0; background: #fff; cursor: pointer; text-align: center; transition: all 0.2s; font-family: inherit; }
+        .mode-selector { display: flex; gap: 8px; margin-bottom: 10px; }
+        .mode-btn { flex: 1; padding: 8px 8px; border-radius: 12px; border: 2px solid #e2e8f0; background: #fff; cursor: pointer; text-align: center; transition: all 0.2s; font-family: inherit; }
         .mode-btn:hover { border-color: #93c5fd; }
         .mode-active { border-color: #667eea; background: #eff6ff; }
-        .mode-icon { display: block; font-size: 28px; margin-bottom: 4px; }
-        .mode-name { display: block; font-size: 14px; font-weight: 600; color: #1e293b; margin-bottom: 2px; }
-        .mode-desc { display: block; font-size: 11px; color: #94a3b8; }
+        .mode-icon { display: block; font-size: 20px; margin-bottom: 2px; line-height: 1; }
+        .mode-name { display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 1px; }
+        .mode-desc { display: block; font-size: 10px; color: #94a3b8; }
 
-        .chapter-input-group { margin-bottom: 18px; text-align: left; }
-        .chapter-label { display: block; font-size: 14px; font-weight: 600; color: #334155; margin-bottom: 8px; }
-        .chapter-input { width: 100%; padding: 14px 18px; border: 2px solid #e2e8f0; border-radius: 14px; font-size: 15px; outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }
+        .chapter-input-group { margin-bottom: 10px; text-align: left; }
+        .chapter-label { display: block; font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 6px; }
+        .chapter-input { width: 100%; padding: 10px 12px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 14px; outline: none; transition: border-color 0.2s; font-family: inherit; box-sizing: border-box; }
         .chapter-input:focus { border-color: #667eea; }
-        .btn-start-recall { width: 100%; padding: 14px; border: none; border-radius: 14px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+        .btn-start-recall { width: 100%; padding: 10px; border: none; border-radius: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
         .btn-start-recall:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-start-recall:hover:not(:disabled) { opacity: 0.92; }
+        @media (max-width: 1280px) {
+          .start-screen { grid-template-columns: minmax(340px, 44%) minmax(520px, 56%); }
+          .guide-fill { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 1100px) {
+          .start-screen { grid-template-columns: 1fr; height: auto; max-height: none; overflow: visible; }
+          .start-guide { position: static; min-height: auto; height: auto; overflow: visible; }
+          .start-card { max-width: 100%; height: auto; overflow: visible; }
+        }
       `}</style>
     </div>
   );

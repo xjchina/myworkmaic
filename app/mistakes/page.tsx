@@ -469,7 +469,7 @@ export default function MistakesPage() {
                     </div>
 
                     {/* Items */}
-                    {items.map((item) => {
+                    {items.map((item, itemIndex) => {
                       const key = entryKey(item);
                       const isSelected = selectedKeys.has(key);
                       const isRemoving = removingKeys.has(key);
@@ -481,8 +481,7 @@ export default function MistakesPage() {
                         >
                           <div className="item-top">
                             <div className="meta">
-                              <span>{item.questionId}</span>
-                              <span>{item.updatedAt ? new Date(item.updatedAt).toLocaleString() : '-'}</span>
+                              <span>{itemIndex + 1}</span>
                             </div>
                             <div className="item-actions">
                               {selectMode && (

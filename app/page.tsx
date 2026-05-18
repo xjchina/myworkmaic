@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AppShell } from '@/components/shell/app-shell';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
+import { useSessionStore } from '@/lib/store/session';
 import { listStages } from '@/lib/utils/stage-storage';
 import { readQuizSessions } from '@/lib/quiz/persistence';
 import styles from './page.module.css';
@@ -70,12 +71,14 @@ function computeLearningStreak(timestamps: number[]): number {
 
 export default function HomePage() {
   const { isLoggedIn } = useAuthGuard();
+  const displayName = useSessionStore((s) => s.displayName);
   const [stats, setStats] = useState({
     completedClassrooms: 0,
     practiceQuestionCount: 0,
     discussionTopics: 0,
     continuousLearningDays: 0,
   });
+  const welcomeName = displayName?.trim() || '同学';
 
   const readLocalStats = useCallback(async () => {
     const stages = await listStages();
@@ -155,7 +158,7 @@ export default function HomePage() {
   return (
     <AppShell
       activeKey="home"
-      title="欢迎回来，小明"
+      title={`欢迎回来，${welcomeName}`}
       description="今天是学习的好日子，继续加油。"
       actions={
         <>
@@ -239,6 +242,30 @@ export default function HomePage() {
           <div className={styles.statValue}>{stats.continuousLearningDays}</div>
           <div className={styles.statLabel}>连续学习(天)</div>
         </div>
+      </div>
+      <div className={styles.icpFooter}>
+        <div className={styles.openSourceNotice}>
+          <p>本产品基于开源项目 OpenMAIC 开发，遵循 GNU AGPL v3 协议。</p>
+          <p>
+            源码获取：
+            <a
+              href="https://github.com/THU-MAIC/OpenMAIC"
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className={styles.sourceLink}
+            >
+              GitHub 地址
+            </a>
+          </p>
+        </div>
+        <a
+          href="https://beian.miit.gov.cn/"
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className={styles.icpLink}
+        >
+          京ICP备2024085704号-7
+        </a>
       </div>
     </AppShell>
   );

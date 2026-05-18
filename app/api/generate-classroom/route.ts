@@ -6,6 +6,8 @@ import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
 import { createLogger } from '@/lib/logger';
+import { getAuthUserId } from '@/lib/server/auth';
+import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 
 const log = createLogger('GenerateClassroom API');
 
@@ -14,6 +16,11 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   let requirementSnippet: string | undefined;
   try {
+    const userId = await getAuthUserId();
+    if (!userId) {
+      return apiError('INVALID_REQUEST', 401, '请先登录后再生成课堂');
+    }
+
     const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
     requirementSnippet = rawBody.requirement?.substring(0, 60);
     const body: GenerateClassroomInput = {
@@ -40,6 +47,18 @@ export async function POST(req: NextRequest) {
 
     const baseUrl = buildRequestOrigin(req);
     const jobId = nanoid(10);
+    const consumeResult = await consumeUsageWithTransaction(userId, 'classroom', {
+      dedupeKey: `classroom-job:${jobId}`,
+      subject: requirement.substring(0, 80),
+    });
+    if (!consumeResult.canUse) {
+      return apiError(
+        'INVALID_REQUEST',
+        429,
+        consumeResult.upgradeTip ?? '今日教案课堂额度已用完，请升级会员后继续使用',
+      );
+    }
+
     const job = await createClassroomGenerationJob(jobId, body);
     const pollUrl = `${baseUrl}/api/generate-classroom/${jobId}`;
 
