@@ -110,6 +110,20 @@ function normalizeAnswer(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value.join(', ') : value;
 }
 
+function inferSubjectFromText(text: string): string | null {
+  const t = text.toLowerCase();
+  if (/(语文|作文|文言|古诗|阅读理解|成语|病句)/.test(t)) return '语文';
+  if (/(数学|函数|方程|集合|几何|代数|概率|三角)/.test(t)) return '数学';
+  if (/(英语|english|完形填空|语法填空|cloze|reading comprehension)/.test(t)) return '英语';
+  if (/(物理|力学|电学|光学|热学)/.test(t)) return '物理';
+  if (/(化学|化学方程式|元素|分子|离子|反应)/.test(t)) return '化学';
+  if (/(生物|细胞|遗传|生态|光合作用)/.test(t)) return '生物';
+  if (/(历史|朝代|近代史|古代史|世界史)/.test(t)) return '历史';
+  if (/(地理|经纬度|气候|地形|洋流)/.test(t)) return '地理';
+  if (/(政治|道法|法律|公民|宪法|经济生活)/.test(t)) return '道法';
+  return null;
+}
+
 function readNotebookStore(): MistakeNotebookStore {
   const raw = safeGet(NOTEBOOK_KEY);
   if (!raw) return { removedKeys: [] };
@@ -315,6 +329,12 @@ export function readMistakeNotebookEntries(): MistakeNotebookEntry[] {
     const updatedAt = Number(safeGet(UPDATED_AT_KEY_PREFIX + sceneId) || 0);
     const sceneTitle = getSceneTitle(sceneId);
     const sceneSubject = getSceneSubject(sceneId);
+    const inferredSubject =
+      sceneSubject ||
+      inferSubjectFromText(
+        `${sceneTitle || ''} ${questions.map((q) => q.question).join(' ')}`,
+      ) ||
+      undefined;
 
     for (const result of results) {
       if (result.status !== 'incorrect') continue;
@@ -325,7 +345,7 @@ export function readMistakeNotebookEntries(): MistakeNotebookEntry[] {
       entries.push({
         sceneId,
         sceneTitle: sceneTitle || undefined,
-        subject: sceneSubject || undefined,
+        subject: inferredSubject,
         questionId: result.questionId,
         question: q?.question || result.questionId,
         userAnswer,

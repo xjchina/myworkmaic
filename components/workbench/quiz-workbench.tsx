@@ -11,6 +11,7 @@ import {
   readQuizSessions,
   removeQuizSession,
   saveQuizSession,
+  saveSceneSubject,
   type QuizSessionRecord,
 } from '@/lib/quiz/persistence';
 import { DEMO_QUIZ_PRESETS, type DemoQuizPreset } from '@/lib/data/demo-quiz-subjects';
@@ -26,6 +27,22 @@ function formatFileSize(size: number) {
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleString();
+}
+
+function inferSubjectFromQuiz(sourceName: string, questions: QuizQuestion[]): string {
+  const text = `${sourceName} ${questions.map((q) => q.question).join(' ')}`.toLowerCase();
+
+  if (/(语文|作文|文言|古诗|阅读理解|成语|病句)/.test(text)) return '语文';
+  if (/(数学|函数|方程|集合|几何|代数|概率|三角)/.test(text)) return '数学';
+  if (/(英语|english|完形填空|阅读理解|语法填空|作文)/.test(text)) return '英语';
+  if (/(物理|力学|电学|光学|热学)/.test(text)) return '物理';
+  if (/(化学|化学方程式|元素|分子|离子|反应)/.test(text)) return '化学';
+  if (/(生物|细胞|遗传|生态|光合作用)/.test(text)) return '生物';
+  if (/(历史|朝代|近代史|古代史|世界史)/.test(text)) return '历史';
+  if (/(地理|经纬度|气候|地形|洋流)/.test(text)) return '地理';
+  if (/(政治|道法|法律|公民|宪法|经济生活)/.test(text)) return '道法';
+
+  return '未分类';
 }
 
 export function QuizWorkbench() {
@@ -118,6 +135,7 @@ export function QuizWorkbench() {
     setSceneTitle(session.sourceName);
     setSummary(session.summary);
     setActiveSessionId(session.id);
+    saveSceneSubject(session.sceneId, inferSubjectFromQuiz(session.sourceName, session.questions));
 
     const next = saveQuizSession({
       id: session.id,
@@ -203,6 +221,7 @@ export function QuizWorkbench() {
       setSceneId(nextSceneId);
       setSceneTitle(pdfFile.name);
       setActiveSessionId(nextSessionId);
+      saveSceneSubject(nextSceneId, inferSubjectFromQuiz(pdfFile.name, extractedQuestions));
 
       const pageCount = parseResult.data.metadata?.pageCount;
       const chars = parsedText.length;
@@ -243,6 +262,7 @@ export function QuizWorkbench() {
     setSceneTitle(preset.sourceName);
     setActiveSessionId(nextSessionId);
     setSummary(preset.summary);
+    saveSceneSubject(nextSceneId, preset.subject || inferSubjectFromQuiz(preset.sourceName, preset.questions));
 
     setSavedSessions(
       saveQuizSession({
