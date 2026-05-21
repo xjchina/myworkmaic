@@ -13,11 +13,13 @@ import {
   exchangeWechatToken,
   fetchWechatUserInfo,
   readWechatConfig,
+  resolveWechatBaseUrl,
   sanitizeNextPath,
 } from '@/lib/server/wechat-auth';
 
 function redirectWithError(request: NextRequest, message: string) {
-  const url = new URL('/login', request.url);
+  const baseUrl = resolveWechatBaseUrl(request);
+  const url = new URL('/login', baseUrl);
   url.searchParams.set('error', message);
   return NextResponse.redirect(url);
 }
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
     await setAuthCookie(user.id);
     await updateLastLoginAt(user.id);
 
-    const response = NextResponse.redirect(new URL(nextPath, request.url));
+    const response = NextResponse.redirect(new URL(nextPath, resolveWechatBaseUrl(request)));
     response.cookies.delete(WECHAT_STATE_COOKIE);
     response.cookies.delete(WECHAT_NEXT_COOKIE);
     return response;

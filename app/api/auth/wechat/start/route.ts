@@ -13,7 +13,7 @@ import {
 export async function GET(request: NextRequest) {
   const { appId, appSecret } = readWechatConfig();
   if (!appId || !appSecret) {
-    const url = new URL('/login', request.url);
+    const url = new URL('/login', resolveWechatBaseUrl(request));
     url.searchParams.set('error', '微信登录尚未配置，请联系管理员。');
     return NextResponse.redirect(url);
   }
