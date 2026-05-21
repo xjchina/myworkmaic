@@ -1,16 +1,16 @@
 import { randomUUID } from 'crypto';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
-  normalizePhone,
-  isValidPhone,
-  isValidPassword,
-  verifyOtpCode,
-  findUserByPhone,
   createUser,
+  findUserByInviteCode,
+  findUserByPhone,
   hashPassword,
+  isValidPassword,
+  isValidPhone,
+  normalizePhone,
   setAuthCookie,
   updateLastLoginAt,
-  findUserByInviteCode,
+  verifyOtpCode,
 } from '@/lib/server/auth';
 import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   }
 
   const phone = normalizePhone(body.phone || '');
-  const code = body.code || '';
+  const code = (body.code || '').trim();
   const password = body.password || '';
   const displayName = body.displayName?.trim() || '学员';
   const inviteCode = normalizeInviteCode(body.inviteCode || '');
@@ -140,13 +140,11 @@ export async function POST(request: Request) {
   await updateLastLoginAt(userId);
   await recordAuthResult({ request, action: 'register', phone, success: true });
 
-  // 生成 token 供小程序使用
   const token = createAuthToken(userId);
-
   return apiSuccess({
     message: '注册成功',
     token,
-    user: { id: userId, phone, displayName },
+    user: { id: userId, phone, phoneBound: true, displayName },
   });
 }
 

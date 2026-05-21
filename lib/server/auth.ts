@@ -22,6 +22,19 @@ export function isValidPhone(phone: string): boolean {
   return /^1\d{10}$/.test(phone);
 }
 
+const WECHAT_PLACEHOLDER_PREFIX = 'wx';
+
+export function isWechatPlaceholderPhone(phone: string): boolean {
+  if (!phone) return false;
+  if (!phone.startsWith(WECHAT_PLACEHOLDER_PREFIX)) return false;
+  if (phone.length !== 11) return false;
+  return /^\d+$/.test(phone.slice(WECHAT_PLACEHOLDER_PREFIX.length));
+}
+
+export function isPhoneBound(phone: string): boolean {
+  return isValidPhone(phone) && !isWechatPlaceholderPhone(phone);
+}
+
 export function isValidPassword(password: string): boolean {
   if (password.length < 8) return false;
   if (!/[A-Z]/.test(password)) return false;
@@ -98,15 +111,24 @@ export async function createUser(data: {
 
 async function generateWechatPlaceholderPhone(): Promise<string> {
   for (let i = 0; i < 30; i += 1) {
+    // 微信扫码首次仅做身份识别，先写入占位值（不可用于手机号登录）。
     let tail = '';
-    for (let j = 0; j < 10; j += 1) {
+    for (let j = 0; j < 9; j += 1) {
       tail += Math.floor(Math.random() * 10).toString();
     }
-    const candidate = `9${tail}`;
+    const candidate = `${WECHAT_PLACEHOLDER_PREFIX}${tail}`;
     const exists = await findUserByPhone(candidate);
     if (!exists) return candidate;
   }
   throw new Error('生成微信账号占位手机号失败，请稍后重试');
+}
+
+export async function ensureWechatPhonePlaceholder(userId: string, phone: string) {
+  if (isWechatPlaceholderPhone(phone)) return phone;
+  if (isPhoneBound(phone)) return phone;
+  const fixedPhone = await generateWechatPlaceholderPhone();
+  await db.update(users).set({ phone: fixedPhone }).where(eq(users.id, userId));
+  return fixedPhone;
 }
 
 export async function createWechatUser(data: {

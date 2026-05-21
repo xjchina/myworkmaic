@@ -2,8 +2,10 @@
 import {
   bindWechatIdentity,
   createWechatUser,
+  ensureWechatPhonePlaceholder,
   findUserByWechatOpenId,
   findUserByWechatUnionId,
+  isPhoneBound,
   setAuthCookie,
   updateLastLoginAt,
 } from '@/lib/server/auth';
@@ -74,10 +76,16 @@ export async function GET(request: NextRequest) {
       return redirectWithError(request, '微信登录失败，请稍后重试。');
     }
 
+    const finalPhone = await ensureWechatPhonePlaceholder(user.id, user.phone);
     await setAuthCookie(user.id);
     await updateLastLoginAt(user.id);
 
-    const response = NextResponse.redirect(new URL(nextPath, resolveWechatBaseUrl(request)));
+    const baseUrl = resolveWechatBaseUrl(request);
+    const phoneBound = isPhoneBound(finalPhone);
+    const targetPath = phoneBound
+      ? nextPath
+      : `/bind-phone?next=${encodeURIComponent(nextPath)}`;
+    const response = NextResponse.redirect(new URL(targetPath, baseUrl));
     response.cookies.delete(WECHAT_STATE_COOKIE);
     response.cookies.delete(WECHAT_NEXT_COOKIE);
     return response;

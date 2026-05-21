@@ -1,13 +1,13 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSessionStore } from '@/lib/store/session';
 import type { NavKey } from './app-shell';
 import styles from './app-shell.module.css';
 
 function maskPhone(phone: string): string {
-  if (phone.length !== 11) return phone || '未登录';
+  if (!phone || phone.length !== 11) return '未绑定';
   return `${phone.slice(0, 3)}****${phone.slice(7)}`;
 }
 
@@ -15,19 +15,23 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
   const displayName = useSessionStore((s) => s.displayName);
   const userPhone = useSessionStore((s) => s.userPhone);
+  const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
   const logout = useSessionStore((s) => s.logout);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const menuItems = [
-    { href: isLoggedIn ? '/account' : '/login', label: isLoggedIn ? '👤 账号管理' : '🔐 登录', active: activeKey === 'account' || activeKey === 'login' },
-    { href: '/subscribe', label: '👑 我的会员', active: activeKey === 'subscribe' },
+    {
+      href: isLoggedIn ? '/account' : '/login',
+      label: isLoggedIn ? '👤 账号管理' : '🔐 登录',
+      active: activeKey === 'account' || activeKey === 'login',
+    },
+    { href: '/subscribe', label: '💎 我的会员', active: activeKey === 'subscribe' },
     { href: '/knowledge-tree', label: '🌳 知识树', active: activeKey === 'knowledge-tree' },
-    { href: '/mistakes', label: '📒 错题本', active: activeKey === 'mistakes' },
+    { href: '/mistakes', label: '📝 错题本', active: activeKey === 'mistakes' },
     { href: '/messages', label: '🔔 消息', active: activeKey === 'messages' },
   ];
 
-  // Close menu when clicking outside
   useEffect(() => {
     if (!open) return;
     function handleClickOutside(e: MouseEvent) {
@@ -39,15 +43,9 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [open]);
 
-  // Also close on Escape key
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    },
-    [],
-  );
-
-  const toggleMenu = () => setOpen((prev) => !prev);
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') setOpen(false);
+  }, []);
 
   return (
     <div
@@ -55,20 +53,20 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
       className={`${styles.user} ${open ? styles.userMenuOpen : ''}`}
       onKeyDown={handleKeyDown}
     >
-      {/* Clickable trigger area (avatar + text) */}
       <button
         type="button"
         className={styles.userTrigger}
-        onClick={toggleMenu}
+        onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <div className={styles.avatar}>{isLoggedIn ? (displayName?.slice(0, 1) ?? '我') : '未'}</div>
+        <div className={styles.avatar}>{isLoggedIn ? (displayName?.slice(0, 1) || '学') : '未'}</div>
         <div className={styles.userText}>
           <div className={styles.userName}>{isLoggedIn ? displayName || '学员' : '个人中心'}</div>
-          <div className={styles.userStatus}>{isLoggedIn ? maskPhone(userPhone) : '点击登录'}</div>
+          <div className={styles.userStatus}>
+            {isLoggedIn ? (isPhoneBound ? maskPhone(userPhone) : '未绑定手机号') : '点击登录'}
+          </div>
         </div>
-        {/* Chevron indicator */}
         <svg
           className={`${styles.userChevron} ${open ? styles.userChevronOpen : ''}`}
           width="14"
@@ -84,11 +82,7 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
         </svg>
       </button>
 
-      {/* Dropdown panel — shown/hidden via .userMenuVisible class */}
-      <div
-        className={`${styles.userMenu} ${open ? styles.userMenuVisible : ''}`}
-        role="menu"
-      >
+      <div className={`${styles.userMenu} ${open ? styles.userMenuVisible : ''}`} role="menu">
         {menuItems.map((item) => (
           <Link
             key={item.href}
@@ -105,7 +99,7 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
             type="button"
             className={styles.userMenuButton}
             onClick={() => {
-              logout();
+              void logout();
               setOpen(false);
             }}
             role="menuitem"
@@ -117,3 +111,4 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
     </div>
   );
 }
+

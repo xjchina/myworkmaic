@@ -1,27 +1,35 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSessionStore } from '@/lib/store/session';
 
-/**
- * 在受保护页面的顶部调用此 hook。
- * 若用户未登录，立即用 router.replace(redirectTo) 跳转，并返回 isLoggedIn = false。
- * 调用方在 isLoggedIn 为 false 时应 return null 以防止受保护内容闪烁。
- *
- * @example
- * const { isLoggedIn } = useAuthGuard();
- * if (!isLoggedIn) return null;
- */
-export function useAuthGuard(redirectTo = '/login') {
+type AuthGuardOptions = {
+  requirePhoneBound?: boolean;
+};
+
+export function useAuthGuard(
+  redirectTo = '/login',
+  options: AuthGuardOptions = {},
+) {
   const router = useRouter();
+  const pathname = usePathname();
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
+  const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
+  const requirePhoneBound = options.requirePhoneBound ?? true;
 
   useEffect(() => {
     if (!isLoggedIn) {
       router.replace(redirectTo);
+      return;
     }
-  }, [isLoggedIn, router, redirectTo]);
 
-  return { isLoggedIn };
+    if (requirePhoneBound && !isPhoneBound && pathname !== '/bind-phone') {
+      const next = pathname || '/';
+      router.replace(`/bind-phone?next=${encodeURIComponent(next)}`);
+    }
+  }, [isLoggedIn, isPhoneBound, pathname, redirectTo, requirePhoneBound, router]);
+
+  return { isLoggedIn, isPhoneBound };
 }
+

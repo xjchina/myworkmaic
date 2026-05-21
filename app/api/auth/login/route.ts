@@ -1,12 +1,13 @@
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import {
-  normalizePhone,
-  isValidPhone,
-  verifyOtpCode,
   findUserByPhone,
-  verifyPassword,
+  isPhoneBound,
+  isValidPhone,
+  normalizePhone,
   setAuthCookie,
   updateLastLoginAt,
+  verifyOtpCode,
+  verifyPassword,
 } from '@/lib/server/auth';
 import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
@@ -15,7 +16,7 @@ type LoginBody = {
   phone?: string;
   code?: string;
   password?: string;
-  method?: string;
+  method?: 'code' | 'password';
   captchaId?: string;
   captchaAnswer?: string;
 };
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return apiError('INVALID_REQUEST', 400, '请求体 JSON 格式不正确');
+    return apiError('INVALID_REQUEST', 400, '请求体 JSON 格式不正确。');
   }
 
   const phone = normalizePhone(body.phone || '');
@@ -55,7 +56,12 @@ export async function POST(request: Request) {
   const user = await findUserByPhone(phone);
   if (!user) {
     await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'user_not_found' });
-    return apiError('INVALID_REQUEST', 404, '该手机号尚未注册，请先完成首次注册。');
+    return apiError('INVALID_REQUEST', 404, '该手机号尚未注册，请先注册。');
+  }
+
+  if (!isPhoneBound(user.phone)) {
+    await recordAuthResult({ request, action: 'login', phone, success: false, reason: 'phone_not_bound' });
+    return apiError('INVALID_REQUEST', 400, '该手机号尚未绑定，请先使用微信扫码登录后完成手机号绑定。');
   }
 
   if (method === 'password') {
@@ -88,15 +94,14 @@ export async function POST(request: Request) {
   await updateLastLoginAt(user.id);
   await recordAuthResult({ request, action: 'login', phone, success: true });
 
-  // 生成 token 供小程序使用（Cookie 给 Web，token 给小程序）
   const token = createAuthToken(user.id);
-
   return apiSuccess({
     message: `欢迎回来，${user.displayName}。`,
     token,
     user: {
       id: user.id,
       phone: user.phone,
+      phoneBound: isPhoneBound(user.phone),
       displayName: user.displayName,
       avatar: user.avatar,
       createdAt: user.createdAt.getTime(),
@@ -104,3 +109,4 @@ export async function POST(request: Request) {
     },
   });
 }
+

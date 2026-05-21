@@ -11,7 +11,7 @@ import { Crown, Sparkles, Zap, ArrowRight, Gift, Users } from 'lucide-react';
 import styles from './account.module.css';
 
 function maskPhone(phone: string): string {
-  if (phone.length !== 11) return phone;
+  if (phone.length !== 11) return '未绑定';
   return `${phone.slice(0, 3)}****${phone.slice(7)}`;
 }
 
@@ -92,6 +92,7 @@ export default function AccountPage() {
   const { isLoggedIn } = useAuthGuard();
   const displayName = useSessionStore((s) => s.displayName);
   const userPhone = useSessionStore((s) => s.userPhone);
+  const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
   const userCreatedAt = useSessionStore((s) => s.userCreatedAt);
   const userLastLoginAt = useSessionStore((s) => s.userLastLoginAt);
   const logout = useSessionStore((s) => s.logout);
@@ -104,7 +105,7 @@ export default function AccountPage() {
     if (!confirmed) return;
 
     const phoneLast4 = userPhone?.slice(-4) || '';
-    if (phoneLast4) {
+    if (isPhoneBound && phoneLast4) {
       const input = window.prompt(`请输入当前手机号后4位（${phoneLast4}）确认注销`);
       if (!input || input.trim() !== phoneLast4) {
         window.alert('校验失败，已取消注销。');
@@ -151,7 +152,7 @@ export default function AccountPage() {
             </div>
             <div className="info-item">
               <span className="info-label">手机号</span>
-              <strong>{maskPhone(userPhone)}</strong>
+              <strong>{isPhoneBound ? maskPhone(userPhone) : '未绑定手机号'}</strong>
             </div>
             <div className="info-item">
               <span className="info-label">注册时间</span>
