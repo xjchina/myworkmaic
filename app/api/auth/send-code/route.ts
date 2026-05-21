@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     request,
     captchaId: body.captchaId,
     captchaAnswer: body.captchaAnswer,
+    consumeOnSuccess: false,
   });
 
   if (!captcha.ok) {

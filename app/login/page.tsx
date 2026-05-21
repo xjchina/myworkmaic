@@ -168,9 +168,8 @@ function LoginPageContent() {
     } else {
       setNotice({ text: result.message || '发送验证码失败', type: 'error' });
       if (result.waitSeconds && result.waitSeconds > 0) setCooldown(result.waitSeconds);
+      void loadCaptcha();
     }
-
-    void loadCaptcha();
   };
 
   const onSubmit = async () => {

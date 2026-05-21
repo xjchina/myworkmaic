@@ -18,12 +18,25 @@ function isValidPassword(password: string): boolean {
   return password.length >= 8 && /[A-Z]/.test(password) && /[a-z]/.test(password) && /\d/.test(password);
 }
 
+function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server-render';
+  const key = 'openmaic_device_id';
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  window.localStorage.setItem(key, random);
+  return random;
+}
+
 function BindPhoneClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = (searchParams.get('next') || '/').startsWith('/')
     ? (searchParams.get('next') || '/')
     : '/';
+
   const { isLoggedIn, isPhoneBound } = useAuthGuard('/login', { requirePhoneBound: false });
   const sendOtp = useSessionStore((s) => s.sendOtp);
   const bindPhone = useSessionStore((s) => s.bindPhone);
@@ -47,17 +60,22 @@ function BindPhoneClient() {
   const refreshCaptcha = async () => {
     setLoadingCaptcha(true);
     try {
-      const res = await fetch('/api/auth/captcha', { method: 'POST' });
+      const res = await fetch('/api/auth/captcha', {
+        method: 'POST',
+        headers: {
+          'x-device-id': getOrCreateDeviceId(),
+        },
+      });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setError(data.error || '图形验证码加载失败，请稍后重试');
+        setError(data.error || '图形验证码加载失败，请稍后重试。');
         return;
       }
-      setCaptchaId(data.captchaId);
-      setCaptchaImage(data.imageDataUrl);
+      setCaptchaId(data.captchaId || '');
+      setCaptchaImage(data.imageDataUrl || '');
       setCaptchaAnswer('');
     } catch {
-      setError('网络错误，请稍后重试');
+      setError('网络错误，请稍后重试。');
     } finally {
       setLoadingCaptcha(false);
     }
@@ -107,7 +125,6 @@ function BindPhoneClient() {
 
     setNotice(result.message || '验证码已发送');
     setCountdown(result.waitSeconds && result.waitSeconds > 0 ? result.waitSeconds : 60);
-    await refreshCaptcha();
   };
 
   const handleBind = async () => {
@@ -198,7 +215,7 @@ function BindPhoneClient() {
             <div className="row">
               <input
                 value={captchaAnswer}
-                onChange={(e) => setCaptchaAnswer(e.target.value.toUpperCase().slice(0, 8))}
+                onChange={(e) => setCaptchaAnswer(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8))}
                 placeholder="输入图形验证码"
                 maxLength={8}
               />
@@ -270,3 +287,4 @@ export default function BindPhonePage() {
     </Suspense>
   );
 }
+

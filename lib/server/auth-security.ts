@@ -28,6 +28,7 @@ type CaptchaVerifyInput = {
   request: Request;
   captchaId?: string;
   captchaAnswer?: string;
+  consumeOnSuccess?: boolean;
 };
 
 type CaptchaTicketRecord = {
@@ -407,6 +408,7 @@ export async function issueCaptcha(request: Request): Promise<CaptchaIssueResult
 export async function verifyCaptcha(input: CaptchaVerifyInput): Promise<SecurityResult> {
   const captchaId = (input.captchaId || '').trim();
   const captchaAnswer = (input.captchaAnswer || '').trim().toUpperCase();
+  const consumeOnSuccess = input.consumeOnSuccess ?? true;
 
   if (!captchaId || !captchaAnswer) {
     return { ok: false, message: '请输入图形验证码。' };
@@ -490,6 +492,8 @@ export async function verifyCaptcha(input: CaptchaVerifyInput): Promise<Security
     return { ok: false, message: '图形验证码错误。' };
   }
 
-  await deleteTicket();
+  if (consumeOnSuccess) {
+    await deleteTicket();
+  }
   return { ok: true };
 }
