@@ -6,10 +6,74 @@
  */
 
 import type { NextRequest } from 'next/server';
-import { getModel, parseModelString, type ModelWithInfo } from '@/lib/ai/providers';
+import { getModel, getProvider, parseModelString, type ModelWithInfo } from '@/lib/ai/providers';
 import type { ThinkingConfig } from '@/lib/types/provider';
-import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provider-config';
+import {
+  getServerProviders,
+  resolveApiKey,
+  resolveBaseUrl,
+  resolveProxy,
+} from '@/lib/server/provider-config';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import type { ProviderId } from '@/lib/types/provider';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('ResolveModel');
+
+const FALLBACK_PROVIDER_ORDER: ProviderId[] = [
+  'deepseek',
+  'qwen',
+  'glm',
+  'doubao',
+  'tencent-hunyuan',
+  'siliconflow',
+  'openrouter',
+  'kimi',
+  'minimax',
+  'grok',
+  'openai',
+  'anthropic',
+  'google',
+  'xiaomi',
+  'ollama',
+];
+
+function pickServerFallbackModel(excludedProviderId: string): {
+  providerId: ProviderId;
+  modelId: string;
+} | null {
+  const serverProviders = getServerProviders();
+  const available = Object.keys(serverProviders) as ProviderId[];
+  if (available.length === 0) return null;
+
+  const orderedCandidates: ProviderId[] = [
+    ...FALLBACK_PROVIDER_ORDER.filter((id) => available.includes(id)),
+    ...available.filter((id) => !FALLBACK_PROVIDER_ORDER.includes(id)),
+  ];
+
+  for (const providerId of orderedCandidates) {
+    if (providerId === excludedProviderId) continue;
+    const serverEntry = serverProviders[providerId];
+    const modelId = serverEntry?.models?.[0] || getProvider(providerId)?.models?.[0]?.id;
+    if (!modelId) continue;
+
+    const key = resolveApiKey(providerId, '');
+    if (!key && providerId !== 'ollama') continue;
+
+    return { providerId, modelId };
+  }
+
+  return null;
+}
+
+function normalizeMisconfiguredBaseUrl(baseUrl: string | undefined): string | undefined {
+  if (!baseUrl) return baseUrl;
+  const trimmed = baseUrl.trim();
+  if (!trimmed) return undefined;
+  // Common misconfiguration: setting full chat endpoint as base URL.
+  // SDK expects host/api-base (e.g. https://api.deepseek.com/v1), not /chat/completions.
+  return trimmed.replace(/\/chat\/completions\/?$/i, '');
+}
 
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "openai/gpt-4o-mini") */
@@ -34,8 +98,11 @@ export async function resolveModel(params: {
   providerType?: string;
   thinkingConfig?: ThinkingConfig;
 }): Promise<ResolvedModel> {
-  const modelString = params.modelString || process.env.DEFAULT_MODEL || 'gpt-5.4-mini';
-  const { providerId, modelId } = parseModelString(modelString);
+  const fallbackDefaultModel =
+    process.env.DEFAULT_MODEL ||
+    (process.env.DEEPSEEK_API_KEY ? 'deepseek:deepseek-v4-flash' : 'gpt-5.4-mini');
+  const initialModelString = params.modelString || fallbackDefaultModel;
+  let { providerId, modelId } = parseModelString(initialModelString);
 
   // SSRF validation applies only to client-supplied base URLs.
   // Server-configured URLs (e.g. OLLAMA_BASE_URL from env/YAML) flow through
@@ -48,10 +115,26 @@ export async function resolveModel(params: {
     }
   }
 
-  const apiKey = clientBaseUrl
-    ? params.apiKey || ''
-    : resolveApiKey(providerId, params.apiKey || '');
-  const baseUrl = clientBaseUrl ? clientBaseUrl : resolveBaseUrl(providerId, params.baseUrl);
+  let apiKey = clientBaseUrl ? params.apiKey || '' : resolveApiKey(providerId, params.apiKey || '');
+  let modelString = initialModelString;
+
+  // If current provider has no usable key, auto-fallback to a server-configured provider
+  // (prefer deepseek). This avoids "API key required for provider: openai" when only
+  // server-side DeepSeek credentials are configured.
+  if (!clientBaseUrl && !params.apiKey && !apiKey) {
+    const fallback = pickServerFallbackModel(providerId);
+    if (fallback) {
+      providerId = fallback.providerId;
+      modelId = fallback.modelId;
+      modelString = `${providerId}:${modelId}`;
+      apiKey = resolveApiKey(providerId, '');
+      log.info(`Auto-fallback model resolved to ${modelString}`);
+    }
+  }
+
+  const baseUrl = normalizeMisconfiguredBaseUrl(
+    clientBaseUrl ? clientBaseUrl : resolveBaseUrl(providerId, params.baseUrl),
+  );
   const proxy = resolveProxy(providerId);
   const { model, modelInfo } = getModel({
     providerId,

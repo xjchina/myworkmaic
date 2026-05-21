@@ -50,7 +50,12 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 export async function verifyPassword(password: string, hashed: string): Promise<boolean> {
-  return compare(password, hashed);
+  if (!hashed || typeof hashed !== 'string') return false;
+  try {
+    return await compare(password, hashed);
+  } catch {
+    return false;
+  }
 }
 
 // ==================== User queries ====================
@@ -178,7 +183,8 @@ const MAX_OTP_ATTEMPTS = 5;
 /** Pre-set test account bypass code (DEV only) */
 const PRESET_TEST_PHONE = '13800138000';
 const PRESET_TEST_OTP = '123456';
-const PRESET_TEST_ENABLED = process.env.NODE_ENV !== 'production';
+const FORCE_REAL_SMS = (process.env.TENCENT_SMS_FORCE_REAL ?? 'true').toLowerCase() === 'true';
+const PRESET_TEST_ENABLED = !FORCE_REAL_SMS && process.env.NODE_ENV !== 'production';
 
 export function randomOtpCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -220,6 +226,12 @@ export async function createOtpTicket(phone: string): Promise<{
   const code = randomOtpCode();
   const expiresAt = new Date(now.getTime() + OTP_EXPIRE_MS);
   const smsEnabled = isTencentSmsEnabled();
+  if (!smsEnabled && FORCE_REAL_SMS) {
+    return {
+      success: false,
+      message: '短信服务未配置完整，请检查 TENCENT_SMS_* 环境变量。',
+    };
+  }
 
   if (smsEnabled) {
     const smsResult = await sendTencentSmsCode({

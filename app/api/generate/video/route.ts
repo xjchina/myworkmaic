@@ -22,6 +22,7 @@ import { resolveVideoApiKey, resolveVideoBaseUrl } from '@/lib/server/provider-c
 import type { VideoProviderId, VideoGenerationOptions } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 
 const log = createLogger('VideoGeneration API');
@@ -34,6 +35,19 @@ export async function POST(request: NextRequest) {
 
     if (!body.prompt) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing prompt');
+    }
+    const moderation = await checkCombinedCompliance({
+      inputs: [body.prompt],
+      scene: 'video-generation',
+      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+    });
+    if (moderation.blocked) {
+      return apiError(
+        'CONTENT_SENSITIVE',
+        400,
+        '输入内容未通过审核，请调整后重试。',
+        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+      );
     }
 
     const providerId = (request.headers.get('x-video-provider') || 'seedance') as VideoProviderId;

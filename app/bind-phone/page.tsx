@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -45,6 +45,8 @@ function BindPhoneClient() {
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [captchaId, setCaptchaId] = useState('');
   const [captchaImage, setCaptchaImage] = useState('');
   const [captchaAnswer, setCaptchaAnswer] = useState('');
@@ -227,24 +229,34 @@ function BindPhoneClient() {
 
           <div className="field">
             <label>设置密码</label>
-            <input
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              type="password"
-              placeholder="至少 8 位，含大小写字母和数字"
-              autoComplete="new-password"
-            />
+            <div className="row single">
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type={showPassword ? 'text' : 'password'}
+                placeholder="至少 8 位，含大小写字母和数字"
+                autoComplete="new-password"
+              />
+              <button type="button" className="ghost" onClick={() => setShowPassword((v) => !v)}>
+                {showPassword ? '隐藏' : '显示'}
+              </button>
+            </div>
           </div>
 
           <div className="field">
             <label>确认密码</label>
-            <input
-              value={passwordConfirm}
-              onChange={(e) => setPasswordConfirm(e.target.value)}
-              type="password"
-              placeholder="请再次输入密码"
-              autoComplete="new-password"
-            />
+            <div className="row single">
+              <input
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                type={showPasswordConfirm ? 'text' : 'password'}
+                placeholder="请再次输入密码"
+                autoComplete="new-password"
+              />
+              <button type="button" className="ghost" onClick={() => setShowPasswordConfirm((v) => !v)}>
+                {showPasswordConfirm ? '隐藏' : '显示'}
+              </button>
+            </div>
           </div>
 
           {error ? <div className="notice notice-error">{error}</div> : null}
@@ -268,6 +280,7 @@ function BindPhoneClient() {
         input { width: 100%; height: 46px; border-radius: 12px; border: 1px solid #e2e8f0; padding: 0 14px; font-size: 15px; outline: none; }
         input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.16); }
         .row { display: grid; grid-template-columns: 1fr 126px; gap: 10px; align-items: center; }
+        .row.single { grid-template-columns: 1fr 80px; }
         .ghost, .captcha { height: 46px; border-radius: 12px; border: 1px solid #dbe2ef; background: #f8fafc; font-size: 14px; font-weight: 600; color: #334155; cursor: pointer; overflow: hidden; }
         .ghost:disabled, .captcha:disabled { opacity: 0.6; cursor: not-allowed; }
         .captcha img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -287,4 +300,3 @@ export default function BindPhonePage() {
     </Suspense>
   );
 }
-

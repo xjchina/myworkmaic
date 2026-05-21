@@ -18,6 +18,7 @@ import {
   resolveWechatBaseUrl,
   sanitizeNextPath,
 } from '@/lib/server/wechat-auth';
+import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
 function redirectWithError(request: NextRequest, message: string) {
   const baseUrl = resolveWechatBaseUrl(request);
@@ -50,6 +51,12 @@ export async function GET(request: NextRequest) {
       accessToken: token.access_token,
       openId: token.openid,
     });
+    const moderation = await checkCombinedCompliance({
+      inputs: [userInfo.nickname],
+      scene: 'wechat-profile',
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
+    });
+    const safeNickname = moderation.blocked ? '微信用户' : (userInfo.nickname || '微信用户');
 
     let user = await findUserByWechatOpenId(token.openid);
 
@@ -67,7 +74,7 @@ export async function GET(request: NextRequest) {
       user = await createWechatUser({
         openId: token.openid,
         unionId: token.unionid || userInfo.unionid || null,
-        displayName: userInfo.nickname || '微信用户',
+        displayName: safeNickname,
         avatar: userInfo.headimgurl || null,
       });
     }

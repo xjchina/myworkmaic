@@ -1,171 +1,360 @@
-import { NextRequest } from 'next/server';
+﻿import { NextRequest } from 'next/server';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
-
-const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
-const DEEPSEEK_ANTHROPIC_API = 'https://api.deepseek.com/v1/messages';
 
 export const runtime = 'nodejs';
 
+const BAIDU_TOKEN_ENDPOINT = 'https://aip.baidubce.com/oauth/2.0/token';
+const BAIDU_OCR_ENDPOINT = 'https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic';
+const DEEPSEEK_DEFAULT_BASE = 'https://api.deepseek.com';
+
+type StepKey =
+  | 'step1'
+  | 'step2Mistake'
+  | 'step2Focus'
+  | 'step3'
+  | 'step4Type'
+  | 'step4Condition'
+  | 'step4Goal'
+  | 'step4Steps'
+  | 'step5';
+
+type StepData = Record<StepKey, string>;
+
+const STEP_KEYS: StepKey[] = [
+  'step1',
+  'step2Mistake',
+  'step2Focus',
+  'step3',
+  'step4Type',
+  'step4Condition',
+  'step4Goal',
+  'step4Steps',
+  'step5',
+];
+
+const EMPTY_STEPS: StepData = {
+  step1: '',
+  step2Mistake: '',
+  step2Focus: '',
+  step3: '',
+  step4Type: '',
+  step4Condition: '',
+  step4Goal: '',
+  step4Steps: '',
+  step5: '',
+};
+
+let cachedBaiduToken: string | null = null;
+let cachedBaiduTokenExpiresAt = 0;
+
+interface OcrRequestBody {
+  image?: string;
+  mimeType?: string;
+}
+
+interface BaiduTokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+
+interface BaiduOcrResponse {
+  error_code?: number;
+  error_msg?: string;
+  words_result?: Array<{ words?: string }>;
+}
+
+function sanitizeBase64(value: string): string {
+  const trimmed = value.trim();
+  const commaIndex = trimmed.indexOf(',');
+  const payload = commaIndex >= 0 ? trimmed.slice(commaIndex + 1) : trimmed;
+  return payload.replace(/\s+/g, '');
+}
+
+function truncate(text: string, max = 400): string {
+  if (!text) return '';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function uniqueLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const line of lines) {
+    const key = line.replace(/\s+/g, '');
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(line);
+  }
+  return result;
+}
+
+function pickLines(lines: string[], keywords: string[]): string[] {
+  return lines.filter((line) => keywords.some((kw) => line.includes(kw)));
+}
+
+function joinTop(lines: string[], top = 3): string {
+  return uniqueLines(lines).slice(0, top).join('；');
+}
+
+function safeStepData(candidate: unknown): StepData {
+  const base: StepData = { ...EMPTY_STEPS };
+  if (!candidate || typeof candidate !== 'object') return base;
+  const data = candidate as Record<string, unknown>;
+  for (const key of STEP_KEYS) {
+    const raw = data[key];
+    if (typeof raw === 'string') {
+      base[key] = truncate(raw.trim(), 800);
+    }
+  }
+  return base;
+}
+
+function mergeSteps(primary: StepData, fallback: StepData): StepData {
+  const merged: StepData = { ...EMPTY_STEPS };
+  for (const key of STEP_KEYS) {
+    merged[key] = primary[key] || fallback[key] || '';
+  }
+  return merged;
+}
+
+function buildHeuristicSteps(rawText: string): StepData {
+  const lines = uniqueLines(
+    rawText
+      .split(/\r?\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean),
+  );
+
+  const coreLines = pickLines(lines, ['概念', '定义', '性质', '原理', '含义', '本质']);
+  const mistakeLines = pickLines(lines, ['易错', '错误', '注意', '陷阱', '误区']);
+  const focusLines = pickLines(lines, ['重点', '关键', '考点', '高频', '掌握']);
+  const formulaLines = pickLines(lines, ['公式', '定理', '=', '≥', '≤', '≠', '+', '-', '×', '÷', '^']);
+  const exampleLines = pickLines(lines, ['例', '题', '已知', '求', '解', '步骤', '证明']);
+  const summaryLines = pickLines(lines, ['总结', '方法', '思路', '技巧', '归纳', '复盘']);
+
+  const untouchedLines = lines.filter(
+    (line) =>
+      !coreLines.includes(line) &&
+      !mistakeLines.includes(line) &&
+      !focusLines.includes(line) &&
+      !formulaLines.includes(line) &&
+      !exampleLines.includes(line) &&
+      !summaryLines.includes(line),
+  );
+
+  const step4Condition = joinTop(
+    exampleLines.filter((line) => /已知|条件|设|给定/.test(line)),
+    2,
+  );
+  const step4Goal = joinTop(
+    exampleLines.filter((line) => /求|证明|判断|比较|化简|计算/.test(line)),
+    2,
+  );
+  const step4Steps = joinTop(
+    exampleLines.filter((line) => /步骤|先|再|然后|最后|由此/.test(line)),
+    3,
+  );
+
+  return {
+    step1: joinTop(coreLines, 3) || joinTop(untouchedLines, 3),
+    step2Mistake: joinTop(mistakeLines, 2),
+    step2Focus: joinTop(focusLines, 3),
+    step3: joinTop(formulaLines, 4),
+    step4Type: joinTop(exampleLines.filter((line) => /题型|例题|类型|应用/.test(line)), 2) || joinTop(exampleLines, 2),
+    step4Condition,
+    step4Goal,
+    step4Steps,
+    step5: joinTop(summaryLines, 3),
+  };
+}
+
+async function getBaiduAccessToken(apiKey: string, secretKey: string): Promise<string> {
+  const now = Date.now();
+  if (cachedBaiduToken && now < cachedBaiduTokenExpiresAt) {
+    return cachedBaiduToken;
+  }
+
+  const url = new URL(BAIDU_TOKEN_ENDPOINT);
+  url.searchParams.set('grant_type', 'client_credentials');
+  url.searchParams.set('client_id', apiKey);
+  url.searchParams.set('client_secret', secretKey);
+
+  const response = await fetch(url.toString(), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const payload = (await response.json()) as BaiduTokenResponse;
+  if (!response.ok || !payload.access_token) {
+    const detail = payload.error_description || payload.error || '百度 OCR 鉴权失败';
+    throw new Error(detail);
+  }
+
+  const expiresInSeconds = Math.max(60, payload.expires_in ?? 2592000);
+  cachedBaiduToken = payload.access_token;
+  cachedBaiduTokenExpiresAt = now + (expiresInSeconds - 120) * 1000;
+  return payload.access_token;
+}
+
+async function runBaiduOcr(imageBase64: string, accessToken: string): Promise<string> {
+  const body = new URLSearchParams();
+  body.set('image', imageBase64);
+  body.set('language_type', 'CHN_ENG');
+  body.set('detect_direction', 'true');
+  body.set('paragraph', 'true');
+
+  const response = await fetch(`${BAIDU_OCR_ENDPOINT}?access_token=${encodeURIComponent(accessToken)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+    signal: AbortSignal.timeout(20000),
+  });
+
+  const payload = (await response.json()) as BaiduOcrResponse;
+  if (!response.ok || payload.error_code) {
+    const detail = payload.error_msg || `百度 OCR 调用失败（HTTP ${response.status}）`;
+    throw new Error(detail);
+  }
+
+  const text = (payload.words_result || [])
+    .map((item) => item.words?.trim())
+    .filter(Boolean)
+    .join('\n');
+
+  if (!text.trim()) {
+    throw new Error('图片中未识别到可用文字');
+  }
+
+  return text;
+}
+
+function resolveDeepSeekUrl(): string {
+  const rawBase = process.env.DEEPSEEK_BASE_URL?.trim() || DEEPSEEK_DEFAULT_BASE;
+  const base = rawBase.replace(/\/+$/, '');
+  return base.endsWith('/v1') ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
+}
+
+async function refineWithLlm(rawText: string, fallback: StepData): Promise<StepData> {
+  const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (!apiKey) return fallback;
+
+  const prompt = `你是白纸回忆法助手。请严格根据 OCR 文本抽取 5 步字段，不能编造。\n\n` +
+    `仅输出 JSON，不要输出解释。字段：\n` +
+    `${JSON.stringify(EMPTY_STEPS, null, 2)}\n\n` +
+    `OCR 文本如下：\n${rawText}`;
+
+  const response = await fetch(resolveDeepSeekUrl(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: process.env.KNOWLEDGE_OCR_LLM_MODEL?.trim() || 'deepseek-v4-flash',
+      temperature: 0.1,
+      messages: [
+        { role: 'system', content: '你是严谨的信息抽取助手，只能依据给定文本抽取字段。' },
+        { role: 'user', content: prompt },
+      ],
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (!response.ok) return fallback;
+
+  const payload = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+
+  const content = payload.choices?.[0]?.message?.content?.trim() || '';
+  if (!content) return fallback;
+
+  try {
+    const match = content.match(/\{[\s\S]*\}/);
+    if (!match) return fallback;
+    const parsed = JSON.parse(match[0]);
+    const llmSteps = safeStepData(parsed);
+    return mergeSteps(llmSteps, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const apiKeyFromHeader = request.headers.get('x-api-key')?.trim();
-    const apiKey = apiKeyFromHeader || process.env.DEEPSEEK_API_KEY?.trim();
-    if (!apiKey) {
+    const apiKey = process.env.BAIDU_OCR_API_KEY?.trim();
+    const secretKey = process.env.BAIDU_OCR_SECRET_KEY?.trim();
+
+    if (!apiKey || !secretKey) {
       return Response.json(
         {
-          error: '后端未配置 DeepSeek API Key，请联系管理员配置后重试',
+          success: false,
+          error: '后端未配置百度 OCR，请联系管理员配置 BAIDU_OCR_API_KEY 和 BAIDU_OCR_SECRET_KEY。',
         },
         { status: 500 },
       );
     }
 
-    const rawText = await request.text();
-    if (!rawText || rawText.length < 50) {
-      return Response.json({ error: '请求体为空或过小', length: rawText?.length || 0 }, { status: 400 });
-    }
-
-    let body: { image?: string; mimeType?: string };
+    let body: OcrRequestBody;
     try {
-      body = JSON.parse(rawText);
-    } catch (e) {
-      return Response.json({ error: 'JSON解析失败', detail: String(e) }, { status: 400 });
+      body = (await request.json()) as OcrRequestBody;
+    } catch {
+      return Response.json({ success: false, error: '请求体不是合法 JSON。' }, { status: 400 });
     }
 
-    const { image, mimeType } = body;
-
-    if (!image || typeof image !== 'string') {
-      return Response.json({ error: '未收到图片数据' }, { status: 400 });
+    if (!body?.image || typeof body.image !== 'string') {
+      return Response.json({ success: false, error: '未收到图片数据。' }, { status: 400 });
     }
 
-    if (image.length > 14 * 1024 * 1024) {
-      return Response.json({ error: '图片过大，请压缩后上传（最大10MB）' }, { status: 400 });
+    const imageBase64 = sanitizeBase64(body.image);
+    if (!imageBase64 || imageBase64.length < 40) {
+      return Response.json({ success: false, error: '图片内容为空或格式不正确。' }, { status: 400 });
     }
 
-    const mime = mimeType || 'image/jpeg';
-    const dataUrl = `data:${mime};base64,${image}`;
+    if (imageBase64.length > 14 * 1024 * 1024) {
+      return Response.json({ success: false, error: '图片过大，请压缩后重试（建议 10MB 以内）。' }, { status: 400 });
+    }
 
-    const OCR_PROMPT = `你是一个手写数学笔记OCR识别助手。请识别图片中的手写内容，并按以下结构提取：
+    const accessToken = await getBaiduAccessToken(apiKey, secretKey);
+    const rawText = await runBaiduOcr(imageBase64, accessToken);
 
-第1步（核心概念）：提取学生写的核心概念关键词
-第2步（易错点和重点）：提取易错点和重点
-第3步（公式定理）：提取公式或定理名称及结构
-第4步（典型例题）：提取题目类型、已知条件、求解目标、关键步骤
-第5步（方法总结）：提取核心方法
+    let steps = buildHeuristicSteps(rawText);
+    steps = await refineWithLlm(rawText, steps);
 
-请按以下JSON格式回复，只返回JSON，不要有其他文字：
-{
-  "step1": "识别的核心概念",
-  "step2Mistake": "识别的易错点",
-  "step2Focus": "识别的重点",
-  "step3": "识别的公式定理",
-  "step4Type": "识别的题目类型",
-  "step4Condition": "识别的已知条件",
-  "step4Goal": "识别的求解目标",
-  "step4Steps": "识别的关键步骤",
-  "step5": "识别的方法总结"
-}
-
-如果某一步内容在图片中找不到，对应的值设为空字符串。`;
-
-    // Try OpenAI format with deepseek-v4-flash (supports vision)
-    const openAiPayload = {
-      model: 'deepseek-v4-flash',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: OCR_PROMPT },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ],
-        },
-      ],
-      stream: false,
-      max_tokens: 2048,
-      temperature: 0.1,
-    };
-
-    let response = await fetch(DEEPSEEK_API, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(openAiPayload),
+    const moderation = await checkCombinedCompliance({
+      inputs: [rawText, JSON.stringify(steps)],
+      scene: 'knowledge-ocr',
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
 
-    // If OpenAI format fails, try Anthropic format
-    if (!response.ok) {
-      const anthropicPayload = {
-        model: 'deepseek-v4-flash',
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'image',
-                source: {
-                  type: 'base64',
-                  media_type: mime,
-                  data: image,
-                },
-              },
-              { type: 'text', text: OCR_PROMPT },
-            ],
-          },
-        ],
-        max_tokens: 2048,
-        stream: false,
-      };
-
-      response = await fetch(DEEPSEEK_ANTHROPIC_API, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+    if (moderation.blocked) {
+      return Response.json(
+        {
+          success: false,
+          error: '输入内容未通过审核，请调整后重试。',
+          detail: moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
         },
-        body: JSON.stringify(anthropicPayload),
-      });
+        { status: 400 },
+      );
     }
 
-    if (!response.ok) {
-      await response.text();
-      return Response.json({
-        error: '图片识别服务暂不可用',
-        detail: `DeepSeek Vision暂不支持，请先使用手动填写模式。`,
-        hint: '尝试步骤：选择"快速模式" → 手动填写5步内容 → 提交分析',
-      }, { status: 200 }); // Return 200 with hint so the UI can show a friendly message
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content || data.content?.[0]?.text || '';
-
-    try {
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        const moderation = await checkCombinedCompliance({
-          inputs: [JSON.stringify(parsed), content],
-          scene: 'knowledge-ocr',
-          service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
-        });
-        if (moderation.blocked) {
-          return Response.json(
-            {
-              success: false,
-              error: '输入内容未通过审核，请调整后重试。',
-              detail: moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
-            },
-            { status: 400 },
-          );
-        }
-        return Response.json({ success: true, data: parsed });
-      }
-      return Response.json({ success: false, error: '无法解析OCR结果', raw: content });
-    } catch {
-      return Response.json({ success: false, error: 'OCR识别结果格式异常', raw: content });
-    }
-  } catch (err) {
-    console.error('OCR error:', err);
-    return Response.json({ error: 'OCR处理失败', detail: String(err) }, { status: 500 });
+    return Response.json({
+      success: true,
+      data: steps,
+      rawText: truncate(rawText, 1200),
+      provider: 'baidu-ocr',
+    });
+  } catch (error) {
+    console.error('knowledge OCR error:', error);
+    return Response.json(
+      {
+        success: false,
+        error: 'OCR 处理失败，请稍后重试。',
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    );
   }
 }
