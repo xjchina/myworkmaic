@@ -1,4 +1,5 @@
-﻿import { eq } from 'drizzle-orm';
+﻿import { randomUUID } from 'crypto';
+import { eq } from 'drizzle-orm';
 import { compare, hash } from 'bcryptjs';
 import { db } from '@/lib/db';
 import { users, otpTickets } from '@/lib/db/schema';
@@ -8,7 +9,7 @@ import {
   AUTH_COOKIE_NAME,
   AUTH_COOKIE_MAX_AGE,
 } from './auth-token';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { isTencentSmsEnabled, sendTencentSmsCode } from './tencent-sms';
 
 // ==================== Validation ====================
@@ -68,6 +69,16 @@ export async function findUserByInviteCode(inviteCode: string) {
   return rows[0] ?? null;
 }
 
+export async function findUserByWechatOpenId(openId: string) {
+  const rows = await db.select().from(users).where(eq(users.wechatOpenId, openId)).limit(1);
+  return rows[0] ?? null;
+}
+
+export async function findUserByWechatUnionId(unionId: string) {
+  const rows = await db.select().from(users).where(eq(users.wechatUnionId, unionId)).limit(1);
+  return rows[0] ?? null;
+}
+
 export async function createUser(data: {
   id: string;
   phone: string;
@@ -84,6 +95,54 @@ export async function createUser(data: {
   });
 }
 
+
+async function generateWechatPlaceholderPhone(): Promise<string> {
+  for (let i = 0; i < 30; i += 1) {
+    let tail = '';
+    for (let j = 0; j < 10; j += 1) {
+      tail += Math.floor(Math.random() * 10).toString();
+    }
+    const candidate = `9${tail}`;
+    const exists = await findUserByPhone(candidate);
+    if (!exists) return candidate;
+  }
+  throw new Error('生成微信账号占位手机号失败，请稍后重试');
+}
+
+export async function createWechatUser(data: {
+  openId: string;
+  unionId?: string | null;
+  displayName?: string | null;
+  avatar?: string | null;
+}) {
+  const userId = randomUUID();
+  const phone = await generateWechatPlaceholderPhone();
+  const passwordHash = await hash(`wx-${randomUUID()}`, 10);
+  const displayName = data.displayName?.trim() || '微信用户';
+
+  await db.insert(users).values({
+    id: userId,
+    phone,
+    passwordHash,
+    displayName,
+    avatar: data.avatar || null,
+    wechatOpenId: data.openId,
+    wechatUnionId: data.unionId || null,
+    invitedBy: null,
+  });
+
+  return findUserById(userId);
+}
+
+export async function bindWechatIdentity(userId: string, data: { openId?: string | null; unionId?: string | null }) {
+  await db
+    .update(users)
+    .set({
+      wechatOpenId: data.openId ?? null,
+      wechatUnionId: data.unionId ?? null,
+    })
+    .where(eq(users.id, userId));
+}
 export async function updateLastLoginAt(userId: string) {
   await db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, userId));
 }
@@ -242,8 +301,23 @@ export async function clearAuthCookie() {
 }
 
 export async function getAuthUserId(): Promise<string | null> {
+  // 1. 优先从 Cookie 读取（Web 端）
   const cookieStore = await cookies();
-  const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
-  if (!token) return null;
-  return verifyAuthToken(token);
+  const cookieToken = cookieStore.get(AUTH_COOKIE_NAME)?.value;
+  if (cookieToken) {
+    const userId = verifyAuthToken(cookieToken);
+    if (userId) return userId;
+  }
+
+  // 2. 从 Authorization: Bearer 读取（小程序 / API 调用）
+  const headersList = await headers();
+  const authHeader = headersList.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const bearerToken = authHeader.slice(7);
+    const userId = verifyAuthToken(bearerToken);
+    if (userId) return userId;
+  }
+
+  return null;
 }
+

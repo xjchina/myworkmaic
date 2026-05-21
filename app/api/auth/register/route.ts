@@ -12,6 +12,7 @@ import {
   updateLastLoginAt,
   findUserByInviteCode,
 } from '@/lib/server/auth';
+import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 
@@ -139,8 +140,12 @@ export async function POST(request: Request) {
   await updateLastLoginAt(userId);
   await recordAuthResult({ request, action: 'register', phone, success: true });
 
+  // 生成 token 供小程序使用
+  const token = createAuthToken(userId);
+
   return apiSuccess({
     message: '注册成功',
+    token,
     user: { id: userId, phone, displayName },
   });
 }

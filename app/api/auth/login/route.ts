@@ -8,6 +8,7 @@ import {
   setAuthCookie,
   updateLastLoginAt,
 } from '@/lib/server/auth';
+import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
 
 type LoginBody = {
@@ -87,8 +88,12 @@ export async function POST(request: Request) {
   await updateLastLoginAt(user.id);
   await recordAuthResult({ request, action: 'login', phone, success: true });
 
+  // 生成 token 供小程序使用（Cookie 给 Web，token 给小程序）
+  const token = createAuthToken(user.id);
+
   return apiSuccess({
     message: `欢迎回来，${user.displayName}。`,
+    token,
     user: {
       id: user.id,
       phone: user.phone,

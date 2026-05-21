@@ -17,6 +17,8 @@ export const users = mysqlTable('users', {
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   displayName: varchar('display_name', { length: 50 }).notNull().default('学员'),
   avatar: varchar('avatar', { length: 500 }),
+  wechatOpenId: varchar('wechat_open_id', { length: 64 }).unique(),
+  wechatUnionId: varchar('wechat_union_id', { length: 64 }).unique(),
   // ── Membership fields ──
   subscriptionType: varchar('subscription_type', { length: 20 }).notNull().default('free'), // free | sub | vip
   subscriptionExpiresAt: timestamp('subscription_expires_at'),

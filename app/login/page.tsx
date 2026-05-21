@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -18,6 +18,14 @@ function isValidPhone(phone: string): boolean {
 
 function normalizeInviteCode(code: string): string {
   return code.trim().toUpperCase();
+}
+
+function safeDecode(text: string): string {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
 }
 
 function getOrCreateDeviceId(): string {
@@ -71,6 +79,7 @@ function LoginPageContent() {
 
   const normalizedPhone = normalizePhone(phone);
   const inviteCode = normalizeInviteCode(searchParams.get('invite') || '');
+  const oauthError = (searchParams.get('error') || '').trim();
   const hasCaptcha = captchaAnswer.trim().length >= 4 && Boolean(captchaId);
   const canSubmit = method === 'code'
     ? isValidPhone(normalizedPhone) && code.trim().length === 6 && hasCaptcha
@@ -141,7 +150,7 @@ function LoginPageContent() {
     };
   }, [cooldown]);
 
-  const onSendCode = useCallback(async () => {
+  const onSendCode = async () => {
     if (!hasCaptcha) {
       setNotice({ text: '请先填写图形验证码', type: 'error' });
       return;
@@ -162,9 +171,9 @@ function LoginPageContent() {
     }
 
     void loadCaptcha();
-  }, [hasCaptcha, sendOtp, normalizedPhone, captchaId, captchaAnswer, loadCaptcha]);
+  };
 
-  const onSubmit = useCallback(async () => {
+  const onSubmit = async () => {
     setSubmitting(true);
     setNotice(null);
 
@@ -182,7 +191,7 @@ function LoginPageContent() {
 
     setNotice({ text: result.message || '登录失败', type: 'error' });
     void loadCaptcha();
-  }, [method, loginWithCode, loginWithPassword, normalizedPhone, code, password, captchaId, captchaAnswer, router, loadCaptcha]);
+  };
 
   return (
     <AppShell activeKey="login" title="登录" description="使用验证码或密码登录">
@@ -281,7 +290,15 @@ function LoginPageContent() {
             {submitting ? <LoadingDots /> : '登录'}
           </button>
 
-          {notice && <div className={`notice notice-${notice.type}`}>{notice.text}</div>}
+          <a className="wechat-login-btn" href="/api/auth/wechat/start?next=/">
+            使用微信扫码登录
+          </a>
+
+          {notice ? (
+            <div className={`notice notice-${notice.type}`}>{notice.text}</div>
+          ) : oauthError ? (
+            <div className="notice notice-error">{safeDecode(oauthError)}</div>
+          ) : null}
 
           {inviteCode ? (
             <div className="invite-hint">
@@ -297,8 +314,8 @@ function LoginPageContent() {
       </div>
 
       <style jsx>{`
-        .auth-wrapper { display: flex; justify-content: center; padding: 20px 0; min-height: 500px; }
-        .auth-card { width: 100%; max-width: 420px; background: #fff; border-radius: 24px; padding: 36px 32px 28px; border: 1px solid #eef2f6; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .auth-wrapper { display: flex; justify-content: center; padding: 18px 0; min-height: 500px; }
+        .auth-card { width: 100%; max-width: 440px; background: #fff; border-radius: 24px; padding: 36px 32px 28px; border: 1px solid #eef2f6; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
         .auth-header { text-align: center; margin-bottom: 28px; }
         .auth-logo { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; }
         .auth-header h2 { margin: 0; font-size: 22px; color: #0f172a; }
@@ -321,17 +338,19 @@ function LoginPageContent() {
         .agreement-check { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 10px 0; cursor: pointer; }
         .agreement-checkbox { width: 16px; height: 16px; accent-color: #667eea; }
         .agreement-check-text { font-size: 12px; color: #64748b; }
-        .agreement-link { color: #667eea; text-decoration: none; }
+        .agreement-link { color: #667eea; text-decoration: none; margin: 0 2px; }
         .btn { border: none; border-radius: 12px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; height: 48px; }
         .submit-btn { color: #fff; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .wechat-login-btn { margin-top: 10px; display: flex; width: 100%; height: 46px; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid #10b981; color: #047857; background: #ecfdf5; font-size: 15px; font-weight: 600; text-decoration: none; }
+        .wechat-login-btn:hover { background: #d1fae5; }
         .notice { margin-top: 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px; text-align: center; }
         .notice-info { background: #eff6ff; color: #1d4ed8; }
         .notice-success { background: #f0fdf4; color: #15803d; }
         .notice-error { background: #fef2f2; color: #b91c1c; }
         .invite-hint { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; font-size: 13px; text-align: center; }
         .auth-footer { text-align: center; margin-top: 20px; font-size: 14px; color: #64748b; }
-        .auth-link { color: #4f46e5; font-weight: 600; text-decoration: none; }
+        .auth-link { color: #4f46e5; font-weight: 600; text-decoration: none; margin: 0 2px; }
         :global(.loading-dots) { display: inline-flex; gap: 4px; align-items: center; }
         :global(.loading-dots .dot) { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: dot-pulse 1.2s infinite ease-in-out; }
         :global(.loading-dots .dot:nth-child(2)) { animation-delay: 0.2s; }

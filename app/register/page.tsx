@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -140,7 +140,7 @@ function RegisterPageContent() {
     };
   }, [cooldown]);
 
-  const onSendCode = useCallback(async () => {
+  const onSendCode = async () => {
     if (!hasCaptcha) {
       setNotice({ text: '请先填写图形验证码', type: 'error' });
       return;
@@ -161,9 +161,9 @@ function RegisterPageContent() {
     }
 
     void loadCaptcha();
-  }, [hasCaptcha, sendOtp, normalizedPhone, captchaId, captchaAnswer, loadCaptcha]);
+  };
 
-  const onSubmit = useCallback(async () => {
+  const onSubmit = async () => {
     setSubmitting(true);
     setNotice(null);
 
@@ -187,7 +187,7 @@ function RegisterPageContent() {
 
     setNotice({ text: result.message || '注册失败', type: 'error' });
     void loadCaptcha();
-  }, [registerWithPhone, normalizedPhone, code, password, displayName, inviteCode, captchaId, captchaAnswer, router, loadCaptcha]);
+  };
 
   return (
     <AppShell activeKey="register" title="注册" description="使用手机验证码注册并设置密码">
@@ -269,8 +269,8 @@ function RegisterPageContent() {
       </div>
 
       <style jsx>{`
-        .auth-wrapper { display: flex; justify-content: center; padding: 20px 0; min-height: 500px; }
-        .auth-card { width: 100%; max-width: 420px; background: #fff; border-radius: 24px; padding: 36px 32px 28px; border: 1px solid #eef2f6; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+        .auth-wrapper { display: flex; justify-content: center; padding: 18px 0; min-height: 500px; }
+        .auth-card { width: 100%; max-width: 440px; background: #fff; border-radius: 24px; padding: 36px 32px 28px; border: 1px solid #eef2f6; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
         .auth-header { text-align: center; margin-bottom: 28px; }
         .auth-logo { width: 56px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); color: #fff; font-size: 20px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px; }
         .auth-header h2 { margin: 0; font-size: 22px; color: #0f172a; }
@@ -291,7 +291,7 @@ function RegisterPageContent() {
         .agreement-check { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 10px 0; cursor: pointer; }
         .agreement-checkbox { width: 16px; height: 16px; accent-color: #667eea; }
         .agreement-check-text { font-size: 12px; color: #64748b; }
-        .agreement-link { color: #667eea; text-decoration: none; }
+        .agreement-link { color: #667eea; text-decoration: none; margin: 0 2px; }
         .btn { border: none; border-radius: 12px; padding: 12px 20px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; height: 48px; }
         .submit-btn { color: #fff; background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
         .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -300,7 +300,7 @@ function RegisterPageContent() {
         .notice-success { background: #f0fdf4; color: #15803d; }
         .notice-error { background: #fef2f2; color: #b91c1c; }
         .auth-footer { text-align: center; margin-top: 20px; font-size: 14px; color: #64748b; }
-        .auth-link { color: #4f46e5; font-weight: 600; text-decoration: none; }
+        .auth-link { color: #4f46e5; font-weight: 600; text-decoration: none; margin: 0 2px; }
         :global(.loading-dots) { display: inline-flex; gap: 4px; align-items: center; }
         :global(.loading-dots .dot) { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: dot-pulse 1.2s infinite ease-in-out; }
         :global(.loading-dots .dot:nth-child(2)) { animation-delay: 0.2s; }
