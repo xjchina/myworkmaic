@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from 'next/server';
 import { issueCaptcha } from '@/lib/server/auth-security';
 
-export async function GET(request: Request) {
+async function handleCaptcha(request: Request) {
   try {
     const captcha = await issueCaptcha(request);
     return NextResponse.json({
@@ -20,4 +20,12 @@ export async function GET(request: Request) {
       { status: 500 },
     );
   }
+}
+
+export async function GET(request: Request) {
+  return handleCaptcha(request);
+}
+
+export async function POST(request: Request) {
+  return handleCaptcha(request);
 }
