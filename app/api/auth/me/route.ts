@@ -1,5 +1,6 @@
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { findUserById, getAuthUserId, isPhoneBound } from '@/lib/server/auth';
+import { isAdminIdentity } from '@/lib/server/admin';
 
 export async function GET() {
   try {
@@ -20,6 +21,7 @@ export async function GET() {
         phoneBound: isPhoneBound(user.phone),
         displayName: user.displayName,
         avatar: user.avatar,
+        isAdmin: isAdminIdentity({ userId: user.id, phone: user.phone }),
         subscriptionType: user.subscriptionType,
         subscriptionExpiresAt: user.subscriptionExpiresAt
           ? user.subscriptionExpiresAt.toISOString().slice(0, 10)
@@ -33,4 +35,3 @@ export async function GET() {
     return apiError('INTERNAL_ERROR', 503, '认证服务暂不可用，请稍后重试。');
   }
 }
-

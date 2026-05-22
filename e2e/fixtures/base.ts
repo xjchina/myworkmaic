@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+﻿import { test as base } from '@playwright/test';
 import { MockApi } from './mock-api';
 
 type Fixtures = {
@@ -8,7 +8,8 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   mockApi: async ({ page }, use) => {
     const mockApi = new MockApi(page);
-    // Always mock server-providers — called on every page load by root layout
+    // Always mock auth/session + server providers called on app boot.
+    await mockApi.mockAuthMe();
     await mockApi.mockServerProviders();
     await use(mockApi);
   },

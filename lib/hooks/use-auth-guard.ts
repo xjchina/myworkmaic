@@ -14,11 +14,14 @@ export function useAuthGuard(
 ) {
   const router = useRouter();
   const pathname = usePathname();
+  const sessionChecked = useSessionStore((s) => s.sessionChecked);
   const isLoggedIn = useSessionStore((s) => s.isLoggedIn);
   const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
   const requirePhoneBound = options.requirePhoneBound ?? true;
 
   useEffect(() => {
+    if (!sessionChecked) return;
+
     if (!isLoggedIn) {
       router.replace(redirectTo);
       return;
@@ -28,8 +31,15 @@ export function useAuthGuard(
       const next = pathname || '/';
       router.replace(`/bind-phone?next=${encodeURIComponent(next)}`);
     }
-  }, [isLoggedIn, isPhoneBound, pathname, redirectTo, requirePhoneBound, router]);
+  }, [
+    sessionChecked,
+    isLoggedIn,
+    isPhoneBound,
+    pathname,
+    redirectTo,
+    requirePhoneBound,
+    router,
+  ]);
 
-  return { isLoggedIn, isPhoneBound };
+  return { sessionChecked, isLoggedIn, isPhoneBound };
 }
-

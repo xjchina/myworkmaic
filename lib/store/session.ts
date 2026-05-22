@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 
 interface RegisterPayload {
   phone: string;
@@ -40,7 +40,9 @@ interface SessionActionResult {
 }
 
 interface SessionState {
+  sessionChecked: boolean;
   isLoggedIn: boolean;
+  isAdmin: boolean;
   displayName: string;
   userPhone: string;
   isPhoneBound: boolean;
@@ -73,9 +75,10 @@ function getOrCreateDeviceId(): string {
   const existing = window.localStorage.getItem(key);
   if (existing) return existing;
 
-  const random = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   window.localStorage.setItem(key, random);
   return random;
 }
@@ -88,7 +91,9 @@ function buildAuthHeaders(): HeadersInit {
 }
 
 const emptySession = {
+  sessionChecked: false,
   isLoggedIn: false,
+  isAdmin: false,
   displayName: '',
   userPhone: '',
   isPhoneBound: false,
@@ -106,13 +111,15 @@ export const useSessionStore = create<SessionState>()((set) => ({
     try {
       const res = await fetch('/api/auth/me');
       if (!res.ok) {
-        set(emptySession);
+        set({ ...emptySession, sessionChecked: true });
         return;
       }
       const data = await res.json();
       if (data.success && data.user) {
         set({
+          sessionChecked: true,
           isLoggedIn: true,
+          isAdmin: Boolean(data.user.isAdmin),
           displayName: data.user.displayName || '学员',
           userPhone: data.user.phone || '',
           isPhoneBound: data.user.phoneBound ?? true,
@@ -123,10 +130,10 @@ export const useSessionStore = create<SessionState>()((set) => ({
           subscriptionExpiresAt: data.user.subscriptionExpiresAt ?? null,
         });
       } else {
-        set(emptySession);
+        set({ ...emptySession, sessionChecked: true });
       }
     } catch {
-      // 网络异常时保留当前态，避免误登出
+      set({ ...emptySession, sessionChecked: true });
     }
   },
 
@@ -177,7 +184,9 @@ export const useSessionStore = create<SessionState>()((set) => ({
       const data = await res.json();
       if (data.success) {
         set({
+          sessionChecked: true,
           isLoggedIn: true,
+          isAdmin: Boolean(data.user?.isAdmin),
           displayName: data.user?.displayName || '学员',
           userPhone: data.user?.phone || '',
           isPhoneBound: data.user?.phoneBound ?? true,
@@ -211,13 +220,17 @@ export const useSessionStore = create<SessionState>()((set) => ({
       const data = await res.json();
       if (data.success) {
         set({
+          sessionChecked: true,
           isLoggedIn: true,
+          isAdmin: Boolean(data.user?.isAdmin),
           displayName: data.user?.displayName || '学员',
           userPhone: data.user?.phone || '',
           isPhoneBound: data.user?.phoneBound ?? true,
           userId: data.user?.id || '',
           userCreatedAt: data.user?.createdAt || 0,
           userLastLoginAt: data.user?.lastLoginAt || 0,
+          subscriptionType: data.user?.subscriptionType || 'free',
+          subscriptionExpiresAt: data.user?.subscriptionExpiresAt ?? null,
         });
         return { success: true, message: data.message || '登录成功' };
       }
@@ -243,13 +256,17 @@ export const useSessionStore = create<SessionState>()((set) => ({
       const data = await res.json();
       if (data.success) {
         set({
+          sessionChecked: true,
           isLoggedIn: true,
+          isAdmin: Boolean(data.user?.isAdmin),
           displayName: data.user?.displayName || '学员',
           userPhone: data.user?.phone || '',
           isPhoneBound: data.user?.phoneBound ?? true,
           userId: data.user?.id || '',
           userCreatedAt: data.user?.createdAt || 0,
           userLastLoginAt: data.user?.lastLoginAt || 0,
+          subscriptionType: data.user?.subscriptionType || 'free',
+          subscriptionExpiresAt: data.user?.subscriptionExpiresAt ?? null,
         });
         return { success: true, message: data.message || '登录成功' };
       }
@@ -275,13 +292,17 @@ export const useSessionStore = create<SessionState>()((set) => ({
       const data = await res.json();
       if (data.success) {
         set({
+          sessionChecked: true,
           isLoggedIn: true,
+          isAdmin: Boolean(data.user?.isAdmin),
           displayName: data.user?.displayName || '学员',
           userPhone: data.user?.phone || '',
           isPhoneBound: data.user?.phoneBound ?? true,
           userId: data.user?.id || '',
           userCreatedAt: data.user?.createdAt || 0,
           userLastLoginAt: data.user?.lastLoginAt || 0,
+          subscriptionType: data.user?.subscriptionType || 'free',
+          subscriptionExpiresAt: data.user?.subscriptionExpiresAt ?? null,
         });
         return { success: true, message: data.message || '绑定成功' };
       }
@@ -297,11 +318,10 @@ export const useSessionStore = create<SessionState>()((set) => ({
     } catch {
       // ignore
     }
-    set(emptySession);
+    set({ ...emptySession, sessionChecked: true });
   },
 
   isPhoneRegistered: async (_phoneInput) => {
     return false;
   },
 }));
-

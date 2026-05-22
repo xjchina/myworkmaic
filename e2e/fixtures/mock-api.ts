@@ -10,6 +10,30 @@ import { createMockSceneActionsResponse } from './test-data/scene-actions';
 export class MockApi {
   constructor(private page: Page) {}
 
+  /** Mock logged-in session for guarded routes. */
+  async mockAuthMe() {
+    await this.page.route('**/api/auth/me', (route) => {
+      route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          success: true,
+          user: {
+            id: 'e2e-user',
+            phone: '18900000000',
+            phoneBound: true,
+            displayName: 'E2E用户',
+            avatar: '',
+            subscriptionType: 'free',
+            subscriptionExpiresAt: null,
+            createdAt: Date.now(),
+            lastLoginAt: Date.now(),
+          },
+        }),
+      });
+    });
+  }
+
   /** Mock the SSE outline streaming endpoint */
   async mockSceneOutlinesStream(outlines = mockOutlines) {
     await this.page.route('**/api/generate/scene-outlines-stream', (route) => {

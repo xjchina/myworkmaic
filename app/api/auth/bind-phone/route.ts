@@ -14,6 +14,8 @@ import {
   verifyOtpCode,
 } from '@/lib/server/auth';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
+import { createUserMessageSafe } from '@/lib/server/messages';
+import { isAdminIdentity } from '@/lib/server/admin';
 
 type BindPhoneBody = {
   phone?: string;
@@ -103,6 +105,13 @@ export async function POST(request: Request) {
     .where(eq(users.id, currentUser.id));
 
   await recordAuthResult({ request, action: 'register', phone, success: true });
+  await createUserMessageSafe({
+    userId: currentUser.id,
+    category: 'security',
+    title: '手机号绑定成功',
+    content: `账号已绑定手机号 ${phone.slice(0, 3)}****${phone.slice(7)}。`,
+    actionUrl: '/account',
+  });
 
   return apiSuccess({
     message: '手机号绑定成功',
@@ -112,9 +121,9 @@ export async function POST(request: Request) {
       phoneBound: true,
       displayName: currentUser.displayName,
       avatar: currentUser.avatar,
+      isAdmin: isAdminIdentity({ userId: currentUser.id, phone }),
       createdAt: currentUser.createdAt.getTime(),
       lastLoginAt: Date.now(),
     },
   });
 }
-

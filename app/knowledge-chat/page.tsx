@@ -8,6 +8,7 @@ import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { extractKeywordsFromText, upsertKnowledgeTreeNode } from '@/lib/knowledge/tree-persistence';
+import { getCurrentModelConfig } from '@/lib/utils/model-config';
 
 // ─── Types ──────────────────────────────────────────────────
 type StepField =
@@ -460,6 +461,18 @@ function RecallPageContent() {
   const [ocrPreview, setOcrPreview] = useState<Record<string, string> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const getModelHeaders = useCallback(() => {
+    const modelConfig = getCurrentModelConfig();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-model': modelConfig.modelString || '',
+      'x-api-key': modelConfig.apiKey || '',
+    };
+    if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
+    if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
+    return headers;
+  }, []);
+
   const saveToKnowledgeTree = useCallback(
     (payload: { summary: string; sourceMode: 'dialog' | 'form'; keywordSeed?: string[] }) => {
       const mergedKeywords = Array.from(new Set((payload.keywordSeed || []).filter(Boolean)));
@@ -502,7 +515,7 @@ function RecallPageContent() {
       // AI generates the first question based on subject
       fetch('/api/knowledge/recall', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getModelHeaders(),
         body: JSON.stringify({ chapter, subject, dialogueHistory: [], currentStep: 1 }),
       })
         .then((r) => r.json())
@@ -526,7 +539,7 @@ function RecallPageContent() {
       setFormData({});
       setOcrPreview(null);
     }
-  }, [chapter, checkAndUpgrade, subject]);
+  }, [chapter, checkAndUpgrade, getModelHeaders, subject]);
 
   // ─── Dialog: send message ───────────────────
   const handleDialogSend = useCallback(async () => {
@@ -546,7 +559,7 @@ function RecallPageContent() {
 
       const res = await fetch('/api/knowledge/recall', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getModelHeaders(),
         body: JSON.stringify({
           chapter,
           subject,
@@ -588,7 +601,7 @@ function RecallPageContent() {
     } finally {
       setDialogLoading(false);
     }
-  }, [dialogInput, dialogLoading, messages, chapter, subject, dialogStep, saveToKnowledgeTree]);
+  }, [dialogInput, dialogLoading, messages, chapter, subject, dialogStep, saveToKnowledgeTree, getModelHeaders]);
 
   // ─── Form: submit ────────────────────────────
   const handleFormSubmit = useCallback(async () => {
@@ -598,7 +611,7 @@ function RecallPageContent() {
     try {
       const res = await fetch('/api/knowledge/recall', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getModelHeaders(),
         body: JSON.stringify({ chapter: chapter.trim(), steps: formData, subject }),
       });
       const data = await res.json();
@@ -617,7 +630,7 @@ function RecallPageContent() {
     } finally {
       setFormLoading(false);
     }
-  }, [chapter, formData, saveToKnowledgeTree, subject]);
+  }, [chapter, formData, saveToKnowledgeTree, subject, getModelHeaders]);
 
   // ─── OCR: upload photo ───────────────────────
   const handlePhotoUpload = useCallback(async (file: File) => {

@@ -4,6 +4,7 @@ import {
   timestamp,
   int,
   boolean,
+  text,
   index,
   uniqueIndex,
 } from 'drizzle-orm/mysql-core';
@@ -145,4 +146,25 @@ export const shareRewards = mysqlTable('share_rewards', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => ({
   inviterIdx: index('share_rewards_inviter_idx').on(table.inviterId),
+}));
+
+/**
+ * User messages table - in-app notifications.
+ */
+export const userMessages = mysqlTable('user_messages', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  category: varchar('category', { length: 24 }).notNull(), // system | learning | security | membership | activity
+  title: varchar('title', { length: 120 }).notNull(),
+  content: text('content').notNull(),
+  actionUrl: varchar('action_url', { length: 500 }),
+  metaJson: text('meta_json'),
+  isRead: boolean('is_read').notNull().default(false),
+  readAt: timestamp('read_at'),
+  deletedAt: timestamp('deleted_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => ({
+  userCreatedIdx: index('user_messages_user_created_idx').on(table.userId, table.createdAt),
+  userReadIdx: index('user_messages_user_read_idx').on(table.userId, table.isRead),
+  userCategoryIdx: index('user_messages_user_category_idx').on(table.userId, table.category),
 }));

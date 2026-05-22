@@ -11,6 +11,8 @@ import {
 } from '@/lib/server/auth';
 import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
+import { createUserMessageSafe } from '@/lib/server/messages';
+import { isAdminIdentity } from '@/lib/server/admin';
 
 type LoginBody = {
   phone?: string;
@@ -103,6 +105,13 @@ export async function POST(request: Request) {
     await setAuthCookie(user.id);
     await updateLastLoginAt(user.id);
     await recordAuthResult({ request, action: 'login', phone, success: true });
+    await createUserMessageSafe({
+      userId: user.id,
+      category: 'security',
+      title: '登录成功',
+      content: `你的账号于 ${new Date().toLocaleString('zh-CN', { hour12: false })} 登录成功。`,
+      actionUrl: '/account',
+    });
 
     const token = createAuthToken(user.id);
     return apiSuccess({
@@ -114,6 +123,7 @@ export async function POST(request: Request) {
         phoneBound: isPhoneBound(user.phone),
         displayName: user.displayName,
         avatar: user.avatar,
+        isAdmin: isAdminIdentity({ userId: user.id, phone: user.phone }),
         createdAt: toTimestamp(user.createdAt),
         lastLoginAt: toTimestamp(user.lastLoginAt),
       },

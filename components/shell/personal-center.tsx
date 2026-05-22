@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,21 +16,67 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
   const displayName = useSessionStore((s) => s.displayName);
   const userPhone = useSessionStore((s) => s.userPhone);
   const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
+  const isAdmin = useSessionStore((s) => s.isAdmin);
   const logout = useSessionStore((s) => s.logout);
+
   const [open, setOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let mounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/messages/unread-count');
+        if (!res.ok) return;
+        const data = (await res.json()) as { unreadCount?: number };
+        if (mounted) setUnreadCount(Math.max(0, Number(data.unreadCount ?? 0)));
+      } catch {
+        // ignore
+      }
+    };
+
+    void load();
+    const timer = window.setInterval(() => {
+      void load();
+    }, 30000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [isLoggedIn]);
 
   const menuItems = [
     {
       href: isLoggedIn ? '/account' : '/login',
-      label: isLoggedIn ? '👤 账号管理' : '🔐 登录',
+      label: isLoggedIn ? '账号管理' : '登录',
+      icon: '👤',
       active: activeKey === 'account' || activeKey === 'login',
     },
-    { href: '/subscribe', label: '💎 我的会员', active: activeKey === 'subscribe' },
-    { href: '/knowledge-tree', label: '🌳 知识树', active: activeKey === 'knowledge-tree' },
-    { href: '/mistakes', label: '📝 错题本', active: activeKey === 'mistakes' },
-    { href: '/messages', label: '🔔 消息', active: activeKey === 'messages' },
+    { href: '/subscribe', label: '我的会员', icon: '💎', active: activeKey === 'subscribe' },
+    { href: '/knowledge-tree', label: '知识树', icon: '🌳', active: activeKey === 'knowledge-tree' },
+    { href: '/mistakes', label: '错题本', icon: '📘', active: activeKey === 'mistakes' },
+    {
+      href: '/messages',
+      label: '消息',
+      icon: '🔔',
+      active: activeKey === 'messages',
+      badge: unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : '',
+    },
   ];
+
+  if (isAdmin) {
+    menuItems.splice(1, 0, {
+      href: '/admin/messages',
+      label: '管理员消息',
+      icon: '🛠️',
+      active: activeKey === 'admin-messages',
+      badge: '',
+    });
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -60,7 +106,7 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
         aria-expanded={open}
         aria-haspopup="menu"
       >
-        <div className={styles.avatar}>{isLoggedIn ? (displayName?.slice(0, 1) || '学') : '未'}</div>
+        <div className={styles.avatar}>{isLoggedIn ? displayName?.slice(0, 1) || '学' : '未'}</div>
         <div className={styles.userText}>
           <div className={styles.userName}>{isLoggedIn ? displayName || '学员' : '个人中心'}</div>
           <div className={styles.userStatus}>
@@ -91,7 +137,9 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
             role="menuitem"
             onClick={() => setOpen(false)}
           >
-            {item.label}
+            <span>{item.icon}</span>
+            <span>{item.label}</span>
+            {item.badge ? <span className={styles.userMenuBadge}>{item.badge}</span> : null}
           </Link>
         ))}
         {isLoggedIn ? (
@@ -111,4 +159,3 @@ export function PersonalCenter({ activeKey }: { activeKey: NavKey }) {
     </div>
   );
 }
-

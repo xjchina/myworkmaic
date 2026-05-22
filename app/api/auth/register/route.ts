@@ -15,6 +15,8 @@ import {
 import { createAuthToken } from '@/lib/server/auth-token';
 import { enforceAuthSecurity, recordAuthResult, verifyCaptcha } from '@/lib/server/auth-security';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
+import { createUserMessageSafe } from '@/lib/server/messages';
+import { isAdminIdentity } from '@/lib/server/admin';
 
 type RegisterBody = {
   phone?: string;
@@ -139,12 +141,24 @@ export async function POST(request: Request) {
   await setAuthCookie(userId);
   await updateLastLoginAt(userId);
   await recordAuthResult({ request, action: 'register', phone, success: true });
+  await createUserMessageSafe({
+    userId,
+    category: 'system',
+    title: '欢迎加入纸忆',
+    content: '注册成功，建议先体验教案课堂与互动练习，系统会自动记录你的学习进度。',
+    actionUrl: '/classroom',
+  });
 
   const token = createAuthToken(userId);
   return apiSuccess({
     message: '注册成功',
     token,
-    user: { id: userId, phone, phoneBound: true, displayName },
+    user: {
+      id: userId,
+      phone,
+      phoneBound: true,
+      displayName,
+      isAdmin: isAdminIdentity({ userId, phone }),
+    },
   });
 }
-

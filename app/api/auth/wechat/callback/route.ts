@@ -19,6 +19,7 @@ import {
   sanitizeNextPath,
 } from '@/lib/server/wechat-auth';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
+import { createUserMessageSafe } from '@/lib/server/messages';
 
 function redirectWithError(request: NextRequest, message: string) {
   const baseUrl = resolveWechatBaseUrl(request);
@@ -59,6 +60,7 @@ export async function GET(request: NextRequest) {
     const safeNickname = moderation.blocked ? '微信用户' : (userInfo.nickname || '微信用户');
 
     let user = await findUserByWechatOpenId(token.openid);
+    let isNewUser = false;
 
     if (!user && token.unionid) {
       user = await findUserByWechatUnionId(token.unionid);
@@ -77,6 +79,7 @@ export async function GET(request: NextRequest) {
         displayName: safeNickname,
         avatar: userInfo.headimgurl || null,
       });
+      isNewUser = true;
     }
 
     if (!user) {
@@ -86,6 +89,15 @@ export async function GET(request: NextRequest) {
     const finalPhone = await ensureWechatPhonePlaceholder(user.id, user.phone);
     await setAuthCookie(user.id);
     await updateLastLoginAt(user.id);
+    await createUserMessageSafe({
+      userId: user.id,
+      category: 'security',
+      title: isNewUser ? '微信账号创建成功' : '微信登录成功',
+      content: isNewUser
+        ? '你已通过微信完成首次登录，请尽快绑定手机号以便后续使用验证码或密码登录。'
+        : '你已通过微信扫码登录账号。',
+      actionUrl: isPhoneBound(finalPhone) ? '/account' : '/bind-phone',
+    });
 
     const baseUrl = resolveWechatBaseUrl(request);
     const phoneBound = isPhoneBound(finalPhone);

@@ -3,8 +3,8 @@ import { apiError } from '@/lib/server/api-response';
 import { getAuthUserId } from '@/lib/server/auth';
 import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
-
-const DEEPSEEK_API = 'https://api.deepseek.com/v1/chat/completions';
+import { callLLM } from '@/lib/ai/llm';
+import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 
 // ─── Subject-specific system prompts ────────────────────────────
 
@@ -551,17 +551,13 @@ function isFinalSummary(text: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const requestApiKey = request.headers.get('x-api-key')?.trim() || '';
-    const effectiveApiKey = requestApiKey || process.env.DEEPSEEK_API_KEY || '';
     const userId = await getAuthUserId();
     if (!userId) {
       return apiError('INVALID_REQUEST', 401, '请先登录后再使用知识梳理');
     }
-    if (!effectiveApiKey) {
-      return apiError('MISSING_API_KEY', 500, '未配置 API Key，请先在设置中填写，或在服务器配置 DEEPSEEK_API_KEY');
-    }
-
-    const { chapter, steps, dialogueHistory, subject, currentStep, sessionKey } = await request.json();
+    const body = await request.json();
+    const { chapter, steps, dialogueHistory, subject, currentStep, sessionKey } = body;
+    const { model, thinkingConfig } = await resolveModelFromRequest(request, body);
     const lastUserText =
       Array.isArray(dialogueHistory)
         ? dialogueHistory
@@ -638,19 +634,16 @@ export async function POST(request: NextRequest) {
         ...dialogueHistory,
       ];
 
-      const response = await fetch(DEEPSEEK_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApiKey}` },
-        body: JSON.stringify({ model: 'deepseek-chat', messages, stream: false, max_tokens: 4096, temperature: 0.7 }),
-      });
-
-      if (!response.ok) {
-        await response.text();
-        return Response.json({ error: `API error: ${response.status}` }, { status: response.status });
-      }
-
-      const data = await response.json();
-      const rawContent = data.choices?.[0]?.message?.content || '';
+      const result = await callLLM(
+        {
+          model,
+          messages,
+        },
+        'knowledge-recall-dialog',
+        undefined,
+        thinkingConfig,
+      );
+      const rawContent = result.text || '';
       const isSummaryTagged = /^\s*\[SUMMARY\]/i.test(rawContent);
       const cleaned = stripStepTag(rawContent).replace(/^\s*\[SUMMARY\]\s*/i, '').trim();
       const step = extractStepNumber(rawContent) ?? extractStepNumber(cleaned);
@@ -669,25 +662,18 @@ export async function POST(request: NextRequest) {
 
     const userMessage = `学科：${subjectName}\n章节：${chapter}\n\n我的白纸回忆内容：\n${stepsText}\n\n请按引导流程分析我的回答，并给出完整的最终总结。`;
 
-    const response = await fetch(DEEPSEEK_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${effectiveApiKey}` },
-      body: JSON.stringify({
-        model: 'deepseek-chat',
-        messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }],
-        stream: false,
-        max_tokens: 4096,
-        temperature: 0.7,
-      }),
-    });
+    const result = await callLLM(
+      {
+        model,
+        system: systemPrompt,
+        prompt: userMessage,
+      },
+      'knowledge-recall-form',
+      undefined,
+      thinkingConfig,
+    );
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      return Response.json({ error: `API error: ${response.status}`, detail: errorText }, { status: response.status });
-    }
-
-    const data = await response.json();
-    return Response.json({ content: data.choices?.[0]?.message?.content || '（无响应）' });
+    return Response.json({ content: result.text || '（无响应）' });
   } catch (err) {
     console.error('Knowledge recall error:', err);
     return Response.json({ error: '服务器内部错误，请稍后重试' }, { status: 500 });

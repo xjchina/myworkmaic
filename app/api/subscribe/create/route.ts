@@ -2,6 +2,7 @@
 import { getAuthUserId } from '@/lib/server/auth';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 import { createSubscription } from '@/lib/server/subscription';
+import { createUserMessageSafe } from '@/lib/server/messages';
 
 const VALID_PLANS = ['monthly', 'yearly'] as const;
 type Plan = (typeof VALID_PLANS)[number];
@@ -52,6 +53,14 @@ export async function POST(request: Request) {
   if (!result.success) {
     return apiError('INVALID_REQUEST', 400, result.message ?? '订阅创建失败');
   }
+
+  await createUserMessageSafe({
+    userId,
+    category: 'membership',
+    title: '会员开通成功',
+    content: `你已开通${plan === 'yearly' ? '年费 VIP' : '订阅会员'}，到期日：${result.expiresAt ?? '以系统为准'}。`,
+    actionUrl: '/subscribe',
+  });
 
   return apiSuccess({
     message: '订阅创建成功',

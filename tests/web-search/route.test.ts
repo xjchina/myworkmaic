@@ -47,6 +47,8 @@ describe('POST /api/web-search', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
+    vi.stubEnv('COMPLIANCE_PROVIDER', 'none');
+    vi.stubEnv('COMPLIANCE_FAIL_OPEN', 'true');
     delete process.env.TAVILY_API_KEY;
     delete process.env.TAVILY_BASE_URL;
     delete process.env.BOCHA_API_KEY;

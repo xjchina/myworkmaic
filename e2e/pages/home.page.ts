@@ -1,29 +1,21 @@
-import type { Page, Locator } from '@playwright/test';
+﻿import type { Locator, Page } from '@playwright/test';
 
 export class HomePage {
   readonly page: Page;
-  readonly logo: Locator;
-  readonly textarea: Locator;
-  readonly enterButton: Locator;
+  readonly quickStartLink: Locator;
+  readonly classroomCard: Locator;
+  readonly exerciseCard: Locator;
+  readonly roundtableCard: Locator;
 
   constructor(page: Page) {
     this.page = page;
-    this.logo = page.locator('img[alt="OpenMAIC"]');
-    this.textarea = page.locator('textarea');
-    this.enterButton = page
-      .getByRole('button', { name: /enter/i })
-      .or(page.locator('button:has-text("进入课堂")'));
+    this.quickStartLink = page.getByRole('link', { name: '快速开始' });
+    this.classroomCard = page.getByRole('link', { name: /教案课堂/ });
+    this.exerciseCard = page.getByRole('link', { name: /互动练习/ });
+    this.roundtableCard = page.getByRole('link', { name: /圆桌讨论/ });
   }
 
   async goto() {
     await this.page.goto('/');
-  }
-
-  async fillRequirement(text: string) {
-    await this.textarea.fill(text);
-  }
-
-  async submit() {
-    await this.enterButton.click();
   }
 }
