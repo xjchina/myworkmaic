@@ -153,17 +153,8 @@ export function ProviderConfigPanel({
   }, [apiKey, baseUrl, provider.id, provider.type, requiresApiKey, providersConfig, t]);
 
   const models = providersConfig[provider.id]?.models || [];
-  const isServerConfigured = providersConfig[provider.id]?.isServerConfigured;
-
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Server-configured notice */}
-      {isServerConfigured && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 text-sm text-blue-700 dark:text-blue-300">
-          {t('settings.serverConfiguredNotice')}
-        </div>
-      )}
-
       {/* API Key */}
       <div className="space-y-2">
         <Label>{t('settings.apiSecret')}</Label>
@@ -176,11 +167,11 @@ export function ProviderConfigPanel({
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              placeholder={isServerConfigured ? t('settings.optionalOverride') : 'sk-...'}
+              placeholder="sk-..."
               value={apiKey}
               onChange={(e) => handleApiKeyChange(e.target.value)}
               onBlur={onSave}
-              disabled={!requiresApiKey && !isServerConfigured}
+              disabled={!requiresApiKey}
               className="h-8 pr-8"
             />
             <button
@@ -197,7 +188,7 @@ export function ProviderConfigPanel({
             size="sm"
             onClick={handleTestApi}
             disabled={
-              testStatus === 'testing' || (requiresApiKey && !apiKey && !isServerConfigured)
+              testStatus === 'testing' || (requiresApiKey && !apiKey)
             }
             className="gap-1.5"
           >

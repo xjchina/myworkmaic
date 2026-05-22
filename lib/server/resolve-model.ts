@@ -97,6 +97,11 @@ export async function resolveModel(params: {
   baseUrl?: string;
   providerType?: string;
   thinkingConfig?: ThinkingConfig;
+  /**
+   * Whether to allow server-side provider/apiKey/baseUrl fallback.
+   * Default: true (backward-compatible).
+   */
+  allowServerFallback?: boolean;
 }): Promise<ResolvedModel> {
   const fallbackDefaultModel =
     process.env.DEFAULT_MODEL ||
@@ -115,13 +120,18 @@ export async function resolveModel(params: {
     }
   }
 
-  let apiKey = clientBaseUrl ? params.apiKey || '' : resolveApiKey(providerId, params.apiKey || '');
+  const allowServerFallback = params.allowServerFallback ?? true;
+  let apiKey = clientBaseUrl
+    ? params.apiKey || ''
+    : allowServerFallback
+      ? resolveApiKey(providerId, params.apiKey || '')
+      : (params.apiKey || '');
   let modelString = initialModelString;
 
   // If current provider has no usable key, auto-fallback to a server-configured provider
   // (prefer deepseek). This avoids "API key required for provider: openai" when only
   // server-side DeepSeek credentials are configured.
-  if (!clientBaseUrl && !params.apiKey && !apiKey) {
+  if (allowServerFallback && !clientBaseUrl && !params.apiKey && !apiKey) {
     const fallback = pickServerFallbackModel(providerId);
     if (fallback) {
       providerId = fallback.providerId;
@@ -133,7 +143,11 @@ export async function resolveModel(params: {
   }
 
   const baseUrl = normalizeMisconfiguredBaseUrl(
-    clientBaseUrl ? clientBaseUrl : resolveBaseUrl(providerId, params.baseUrl),
+    clientBaseUrl
+      ? clientBaseUrl
+      : allowServerFallback
+        ? resolveBaseUrl(providerId, params.baseUrl)
+        : params.baseUrl,
   );
   const proxy = resolveProxy(providerId);
   const { model, modelInfo } = getModel({
@@ -169,12 +183,16 @@ function getThinkingConfigFromBody(body: unknown): ThinkingConfig | undefined {
  * Note: requiresApiKey is derived server-side from the provider registry,
  * never from client headers, to prevent auth bypass.
  */
-export async function resolveModelFromHeaders(req: NextRequest): Promise<ResolvedModel> {
+export async function resolveModelFromHeaders(
+  req: NextRequest,
+  options?: { allowServerFallback?: boolean },
+): Promise<ResolvedModel> {
   return resolveModel({
     modelString: req.headers.get('x-model') || undefined,
     apiKey: req.headers.get('x-api-key') || undefined,
     baseUrl: req.headers.get('x-base-url') || undefined,
     providerType: req.headers.get('x-provider-type') || undefined,
+    allowServerFallback: options?.allowServerFallback,
   });
 }
 
@@ -187,8 +205,9 @@ export async function resolveModelFromHeaders(req: NextRequest): Promise<Resolve
 export async function resolveModelFromRequest(
   req: NextRequest,
   body: unknown,
+  options?: { allowServerFallback?: boolean },
 ): Promise<ResolvedModel> {
-  const resolved = await resolveModelFromHeaders(req);
+  const resolved = await resolveModelFromHeaders(req, options);
   return {
     ...resolved,
     thinkingConfig: getThinkingConfigFromBody(body) ?? resolved.thinkingConfig,

@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
-import { Sparkles, Eye, EyeOff, Key } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { QuizView } from '@/components/scene-renderers/quiz-view';
-import { useSettingsStore } from '@/lib/store/settings';
 import type { QuizQuestion } from '@/lib/types/stage';
 import { parseQuizFromPdfText } from '@/lib/quiz/pdf-quiz-parser';
 import {
@@ -17,7 +16,6 @@ import {
 import { DEMO_QUIZ_PRESETS, type DemoQuizPreset } from '@/lib/data/demo-quiz-subjects';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
-import type { PDFProviderId } from '@/lib/pdf/types';
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -58,49 +56,6 @@ export function QuizWorkbench() {
   const [savedSessions, setSavedSessions] = useState<QuizSessionRecord[]>([]);
   const [dragover, setDragover] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // MinerU Cloud API key: read from settings store, editable in-page
-  const [mineruApiKey, setMineruApiKey] = useState<string>('');
-  const [mineruBaseUrl, setMineruBaseUrl] = useState<string>('');
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [pdfProviderId, setPdfProviderId] = useState<PDFProviderId>('unpdf');
-
-  // Sync from settings store on mount
-  useEffect(() => {
-    const s = useSettingsStore.getState();
-    const cloudConfig = s.pdfProvidersConfig?.['mineru-cloud'];
-    const selfHostedConfig = s.pdfProvidersConfig?.['mineru'];
-    // Prefer cloud API key from settings, then self-hosted
-    if (cloudConfig?.apiKey) {
-      setMineruApiKey(cloudConfig.apiKey);
-      setMineruBaseUrl(cloudConfig.baseUrl || '');
-      setPdfProviderId('mineru-cloud');
-    } else if (selfHostedConfig?.baseUrl) {
-      setMineruBaseUrl(selfHostedConfig.baseUrl);
-      setPdfProviderId('mineru');
-    } else if (s.pdfProviderId !== 'unpdf') {
-      setPdfProviderId(s.pdfProviderId);
-      if (s.pdfProvidersConfig?.[s.pdfProviderId]?.apiKey) {
-        setMineruApiKey(s.pdfProvidersConfig[s.pdfProviderId].apiKey);
-      }
-      if (s.pdfProvidersConfig?.[s.pdfProviderId]?.baseUrl) {
-        setMineruBaseUrl(s.pdfProvidersConfig[s.pdfProviderId].baseUrl);
-      }
-    }
-  }, []);
-
-  // Persist key changes back to settings store
-  const saveMineruConfig = (providerId: PDFProviderId, apiKey: string, baseUrl: string) => {
-    const s = useSettingsStore.getState();
-    s.setPDFProvider(providerId);
-    if (providerId === 'mineru-cloud') {
-      s.setPDFProviderConfig('mineru-cloud', { apiKey, baseUrl, enabled: !!apiKey });
-    } else if (providerId === 'mineru') {
-      s.setPDFProviderConfig('mineru', { apiKey, baseUrl, enabled: !!baseUrl });
-    }
-  };
-
-  const hasMineruKey = pdfProviderId === 'mineru-cloud' ? !!mineruApiKey.trim() : !!mineruBaseUrl.trim();
 
   const currentStep = questions?.length ? 4 : isGenerating ? 3 : pdfFile ? 2 : 1;
 
@@ -182,23 +137,11 @@ export function QuizWorkbench() {
     setError(null);
     setIsGenerating(true);
     try {
-      // Determine PDF provider: use MinerU if key available, otherwise fallback to unpdf
-      const effectiveProviderId: PDFProviderId = hasMineruKey ? pdfProviderId : 'unpdf';
-
       const formData = new FormData();
       formData.append('pdf', pdfFile);
       formData.append('usageFeature', 'exercise');
       formData.append('usageKey', `exercise-${Date.now()}-${nanoid(6)}`);
-      formData.append('providerId', effectiveProviderId);
-
-      // Pass MinerU credentials
-      if (effectiveProviderId === 'mineru-cloud' && mineruApiKey.trim()) {
-        formData.append('apiKey', mineruApiKey.trim());
-        if (mineruBaseUrl.trim()) formData.append('baseUrl', mineruBaseUrl.trim());
-      } else if (effectiveProviderId === 'mineru' && mineruBaseUrl.trim()) {
-        formData.append('baseUrl', mineruBaseUrl.trim());
-        if (mineruApiKey.trim()) formData.append('apiKey', mineruApiKey.trim());
-      }
+      formData.append('providerId', 'mineru-cloud');
 
       const parseResponse = await fetch('/api/parse-pdf', { method: 'POST', body: formData });
       const parseResult = await parseResponse.json();
@@ -207,7 +150,7 @@ export function QuizWorkbench() {
       }
 
       const parsedText = String(parseResult.data.text || '').trim();
-      const usedParser = parseResult.data.metadata?.parser || effectiveProviderId;
+      const usedParser = parseResult.data.metadata?.parser || 'mineru-cloud';
       const extractedQuestions = parseQuizFromPdfText(parsedText, usedParser);
       if (extractedQuestions.length === 0) {
         throw new Error(
@@ -285,84 +228,6 @@ export function QuizWorkbench() {
 
   return (
     <div className="exercise-workbench">
-      <section className="parse-section parser-top-section">
-        <div className="mineru-config">
-          <div className="mineru-config-header">
-            <Key className="w-3.5 h-3.5" />
-            <span>PDF 解析引擎</span>
-            {!hasMineruKey && <span className="mineru-badge-unconfigured">未配置 MinerU</span>}
-            {hasMineruKey && <span className="mineru-badge-configured">MinerU 已就绪</span>}
-          </div>
-          {!hasMineruKey && (
-            <p className="mineru-hint">
-              含数学公式的 PDF 建议使用 MinerU 解析，unpdf 模式对公式识别较弱。
-            </p>
-          )}
-          <div className="mineru-config-row">
-            <label className="mineru-label">模式</label>
-            <select
-              className="mineru-select"
-              value={pdfProviderId}
-              onChange={(e) => {
-                const v = e.target.value as PDFProviderId;
-                setPdfProviderId(v);
-                saveMineruConfig(v, mineruApiKey, mineruBaseUrl);
-              }}
-            >
-              <option value="unpdf">unpdf（基础文本提取）</option>
-              <option value="mineru-cloud">MinerU 云端（推荐，支持公式）</option>
-              <option value="mineru">MinerU 自建服务</option>
-            </select>
-          </div>
-          {pdfProviderId === 'mineru-cloud' && (
-            <div className="mineru-config-row">
-              <label className="mineru-label">API Key</label>
-              <div className="mineru-input-wrap">
-                <input
-                  type={showApiKey ? 'text' : 'password'}
-                  className="mineru-input"
-                  placeholder="输入 MinerU 云端 API Key"
-                  value={mineruApiKey}
-                  onChange={(e) => {
-                    setMineruApiKey(e.target.value);
-                    saveMineruConfig(pdfProviderId, e.target.value, mineruBaseUrl);
-                  }}
-                />
-                <button
-                  type="button"
-                  className="mineru-eye-btn"
-                  onClick={() => setShowApiKey(!showApiKey)}
-                  title={showApiKey ? '隐藏密钥' : '显示密钥'}
-                >
-                  {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-          )}
-          {(pdfProviderId === 'mineru-cloud' || pdfProviderId === 'mineru') && (
-            <div className="mineru-config-row">
-              <label className="mineru-label">
-                {pdfProviderId === 'mineru-cloud' ? 'API 地址' : '服务地址'}
-              </label>
-              <input
-                type="text"
-                className="mineru-input"
-                placeholder={
-                  pdfProviderId === 'mineru-cloud'
-                    ? '默认 https://mineru.net/api/v4'
-                    : '输入 MinerU 自建服务地址'
-                }
-                value={mineruBaseUrl}
-                onChange={(e) => {
-                  setMineruBaseUrl(e.target.value);
-                  saveMineruConfig(pdfProviderId, mineruApiKey, e.target.value);
-                }}
-              />
-            </div>
-          )}
-        </div>
-      </section>
-
       <section className="flow-section">
         <h3 className="flow-title">{'\u4f7f\u7528\u6d41\u7a0b'}</h3>
         <div className="flow-steps">
@@ -488,11 +353,7 @@ export function QuizWorkbench() {
                 onClick={handleGenerateQuiz}
                 disabled={isGenerating}
               >
-                {isGenerating
-                  ? '正在解析中...'
-                  : hasMineruKey
-                    ? '开始解析题目（MinerU）'
-                    : '开始解析题目'}
+                {isGenerating ? '正在解析中...' : '开始解析题目'}
               </button>
             </div>
           </div>

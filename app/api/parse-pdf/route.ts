@@ -11,6 +11,10 @@ import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 const log = createLogger('Parse PDF');
 
+const EMBEDDED_MINERU_TOKEN =
+  'eyJ0eXBlIjoiSldUIiwiYWxnIjoiSFM1MTIifQ.eyJqdGkiOiI0ODgwMDM4NSIsInJvbCI6IlJPTEVfUkVHSVNURVIiLCJpc3MiOiJPcGVuWExhYiIsImlhdCI6MTc3OTQzMzE2NywiY2xpZW50SWQiOiJsa3pkeDU3bnZ5MjJqa3BxOXgydyIsInBob25lIjoiMTM1NTI4NjAzODIiLCJvcGVuSWQiOm51bGwsInV1aWQiOiJmNTBiMmI1Ni1hZWU0LTRlYTgtYmQ4OS04ZjUxNzhiMDE1ZDUiLCJlbWFpbCI6IiIsImV4cCI6MTc4NzIwOTE2N30.WkD1Mo4bB_EApexV6-5FV8u-LAaYvorCU-cqSqd6a0X0uGM7fWKqT2hbZvHZYa3L2qf7_via6Ypu9rHGSvXNeA';
+const EMBEDDED_MINERU_BASE_URL = 'https://mineru.net/api/v4';
+
 export async function POST(req: NextRequest) {
   let pdfFileName: string | undefined;
   let resolvedProviderId: string | undefined;
@@ -56,8 +60,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // providerId is required from the client — no server-side store to fall back to
-    const effectiveProviderId = providerId || ('unpdf' as PDFProviderId);
+    // Force MinerU Cloud as default parser for both exercise and embedded OpenMAIC flows.
+    // If caller explicitly passes mineru/mineru-cloud, keep it; otherwise upgrade from unpdf/missing.
+    const effectiveProviderId =
+      providerId && providerId !== 'unpdf' ? providerId : ('mineru-cloud' as PDFProviderId);
     pdfFileName = pdfFile?.name;
     resolvedProviderId = effectiveProviderId;
 
@@ -73,10 +79,16 @@ export async function POST(req: NextRequest) {
       providerId: effectiveProviderId,
       apiKey: clientBaseUrl
         ? apiKey || ''
-        : resolvePDFApiKey(effectiveProviderId, apiKey || undefined),
+        : resolvePDFApiKey(
+            effectiveProviderId,
+            apiKey || (effectiveProviderId === 'mineru-cloud' ? EMBEDDED_MINERU_TOKEN : undefined),
+          ),
       baseUrl: clientBaseUrl
         ? clientBaseUrl
-        : resolvePDFBaseUrl(effectiveProviderId, baseUrl || undefined),
+        : resolvePDFBaseUrl(
+            effectiveProviderId,
+            baseUrl || (effectiveProviderId === 'mineru-cloud' ? EMBEDDED_MINERU_BASE_URL : undefined),
+          ),
     };
 
     // Convert PDF to buffer
@@ -92,12 +104,20 @@ export async function POST(req: NextRequest) {
       service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
     if (moderation.blocked) {
-      return apiError(
-        'CONTENT_SENSITIVE',
-        400,
-        '上传内容未通过审核，请更换资料后重试。',
-        moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
-      );
+      // Exercise PDFs frequently include formulas / symbols that can trigger false positives.
+      // For interactive exercise uploads, keep the flow available and only log a warning.
+      if (usageFeature === 'exercise') {
+        log.warn(
+          `PDF moderation warning bypassed for exercise [user=${userId}, labels=${moderation.labels.join(',') || 'none'}]`,
+        );
+      } else {
+        return apiError(
+          'CONTENT_SENSITIVE',
+          400,
+          '上传内容未通过审核，请更换资料后重试。',
+          moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
+        );
+      }
     }
 
     // Add file metadata

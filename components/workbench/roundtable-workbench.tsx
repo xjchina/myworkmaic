@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -6,9 +6,9 @@ import {
   Plus,
   Send,
   Loader2,
+  Mic,
   MessageSquare,
   Trash2,
-  Volume2,
   Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { cn } from '@/lib/utils';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useSubscriptionStore } from '@/lib/store/subscription';
+import { useAudioRecorder } from '@/lib/hooks/use-audio-recorder';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
 import type { PBLAgent } from '@/lib/pbl/types';
 
@@ -47,14 +48,14 @@ interface DebateSession {
 const DEFAULT_TEACHER_AVATAR = '/avatars/teacher.png';
 const DEFAULT_USER_AVATAR = '/avatars/user.png';
 
-// ── API helper ──────────────────────────────────────────────
+// 閳光偓閳光偓 API helper 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function toPblAgent(agent: AgentConfig): PBLAgent {
   return {
     name: agent.name,
     actor_role: agent.role,
     role_division: 'development',
-    system_prompt: `${agent.persona}\n\n你正在"圆桌讨论"页面发言。请严格围绕学生提问进行讨论，不跑题，不空话。输出要求：观点清晰、逻辑完整、可执行。`,
+    system_prompt: `${agent.persona}\n\n你正在“圆桌讨论”页面发言。请严格围绕学生提问进行讨论，不跑题，不空话。输出要求：观点清晰、逻辑完整、可执行。`,
     default_mode: 'agent',
     delay_time: 0,
     env: {},
@@ -101,7 +102,7 @@ async function askAgent(
   return String(data.message || '').trim();
 }
 
-// ── Agent selection ─────────────────────────────────────────
+// 閳光偓閳光偓 Agent selection 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function pickRoundtableAgents(selectedIds: string[], agentsMap: Record<string, AgentConfig>) {
   const selected = selectedIds.map((id) => agentsMap[id]).filter((a): a is AgentConfig => !!a);
@@ -111,7 +112,7 @@ function pickRoundtableAgents(selectedIds: string[], agentsMap: Record<string, A
   return { teacher, students };
 }
 
-// ── Local storage helpers ───────────────────────────────────
+// 閳光偓閳光偓 Local storage helpers 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 interface DebateStore {
   sessions: DebateSession[];
@@ -160,7 +161,7 @@ function upsertSession(sessions: DebateSession[], target: DebateSession): Debate
   return [...next].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-// ── Speech hook ─────────────────────────────────────────────
+// 閳光偓閳光偓 Speech hook 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function useSpeech() {
   const [speakingMsgId, setSpeakingMsgId] = useState<string | null>(null);
@@ -200,7 +201,7 @@ function useSpeech() {
 
   const speak = useCallback((msg: DiscussionMessage) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    // If currently speaking this message → stop all
+    // If currently speaking this message 閳?stop all
     if (speakingMsgId === msg.id || window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       queueRef.current = [];
@@ -219,6 +220,14 @@ function useSpeech() {
     speakNext();
   }, [speakNext]);
 
+  const enqueueSpeak = useCallback((msg: DiscussionMessage) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis || !msg.content || msg.streaming) return;
+    queueRef.current.push(msg);
+    if (!window.speechSynthesis.speaking && !speakingMsgId) {
+      speakNext();
+    }
+  }, [speakNext, speakingMsgId]);
+
   const stop = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -227,23 +236,19 @@ function useSpeech() {
     setSpeakingMsgId(null);
   }, []);
 
-  return { speakingMsgId, speak, speakAll, stop };
+  return { speakingMsgId, speak, speakAll, enqueueSpeak, stop };
 }
 
-// ── MessageBubble — classroom-style bubble ──────────────────
+// 閳光偓閳光偓 MessageBubble 閳?classroom-style bubble 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function MessageBubble({
   message,
   isLast,
   isRunning,
-  isSpeaking,
-  onSpeak,
 }: {
   message: DiscussionMessage;
   isLast: boolean;
   isRunning: boolean;
-  isSpeaking: boolean;
-  onSpeak: () => void;
 }) {
   const isUser = message.role === 'user';
   const isTeacher = message.role === 'teacher';
@@ -268,26 +273,11 @@ function MessageBubble({
         </span>
       </div>
       {/* Speak button */}
-      {!message.streaming && message.content && (
-        <button
-          type="button"
-          onClick={onSpeak}
-          className={cn(
-            'shrink-0 size-5 rounded-full flex items-center justify-center transition-all duration-200',
-            isSpeaking
-              ? 'bg-violet-100 text-violet-600 ring-1 ring-violet-300'
-              : 'text-gray-300 hover:text-violet-500 hover:bg-violet-50',
-          )}
-          title={isSpeaking ? '停止朗读' : '朗读此消息'}
-        >
-          {isSpeaking ? <Square className="size-2.5 fill-current" /> : <Volume2 className="size-3" />}
-        </button>
-      )}
     </div>
   );
 }
 
-// ── Session list item ───────────────────────────────────────
+// 閳光偓閳光偓 Session list item 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function SessionItem({
   session,
@@ -339,7 +329,7 @@ function SessionItem({
   );
 }
 
-// ── Main Component ──────────────────────────────────────────
+// 閳光偓閳光偓 Main Component 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 export function RoundtableWorkbench() {
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
@@ -356,13 +346,37 @@ export function RoundtableWorkbench() {
   const [inputValue, setInputValue] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [autoSpeak, setAutoSpeak] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const { speakingMsgId, speak, speakAll, stop: stopSpeech } = useSpeech();
+  const { enqueueSpeak, stop: stopSpeech } = useSpeech();
+
+  const { isRecording, isProcessing, startRecording, stopRecording, cancelRecording } = useAudioRecorder({
+    onTranscription: (text) => {
+      const cleaned = text.trim();
+      if (!cleaned) return;
+      setInputValue((prev) => (prev ? prev + ' ' + cleaned : cleaned));
+      setTimeout(() => inputRef.current?.focus(), 0);
+    },
+    onError: (msg) => {
+      setError(msg || '璇煶璇嗗埆澶辫触锛岃閲嶈瘯');
+    },
+  });
 
   useEffect(() => {
     void fetchSubscription();
   }, [fetchSubscription]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage.getItem('roundtable:autoSpeak');
+    if (saved === '0') setAutoSpeak(false);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('roundtable:autoSpeak', autoSpeak ? '1' : '0');
+  }, [autoSpeak]);
 
   // Hydrate from localStorage
   useEffect(() => {
@@ -389,8 +403,12 @@ export function RoundtableWorkbench() {
   // Stop speech on session switch or unmount
   useEffect(() => {
     stopSpeech();
-    return () => stopSpeech();
-  }, [activeSessionId, stopSpeech]);
+    cancelRecording();
+    return () => {
+      stopSpeech();
+      cancelRecording();
+    };
+  }, [activeSessionId, stopSpeech, cancelRecording]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
@@ -498,6 +516,7 @@ export function RoundtableWorkbench() {
     if (!teacher || students.length === 0) return;
     const input = inputValue.trim();
     if (!input || isRunning) return;
+    if (isRecording) stopRecording();
 
     setError(null);
     setIsRunning(true);
@@ -534,25 +553,33 @@ export function RoundtableWorkbench() {
       }
 
       // Teacher reply (streaming)
-      const teacherPrompt = `学生提问：${input}\n\n请你作为AI老师先回答，要求：\n1. 先给结论；\n2. 再解释推理；\n3. 最后给一个可执行建议。`;
+      const teacherPrompt = `学生提问：${input}\n\n请你作为 AI 老师先回答，要求：\n1. 先给结论；\n2. 再解释推理；\n3. 最后给一个可执行建议。`;
       const teacherReply = await askAgent(teacher, teacherPrompt, working.messages);
       working = await streamText(working, teacherReply, 'teacher', teacher.name, teacher.avatar || DEFAULT_TEACHER_AVATAR);
+      if (autoSpeak) {
+        const lastMsg = working.messages[working.messages.length - 1];
+        if (lastMsg) enqueueSpeak(lastMsg);
+      }
 
       // Student replies (streaming)
       for (const student of students.slice(0, 2)) {
         const studentPrompt = `讨论主题：${input}\n老师观点：${teacherReply}\n最近讨论：\n${working.messages
           .slice(-4)
           .map((m) => `${m.name}：${m.content}`)
-          .join('\n')}\n\n请你作为AI学生参与讨论，提出补充/质疑/反思，控制在3句话。`;
+          .join('\n')}\n\n请你作为 AI 学生参与讨论，提出补充、质疑或反思，控制在 3 句内。`;
         const studentReply = await askAgent(student, studentPrompt, working.messages);
         working = await streamText(working, studentReply, 'student', student.name, student.avatar);
+        if (autoSpeak) {
+          const lastMsg = working.messages[working.messages.length - 1];
+          if (lastMsg) enqueueSpeak(lastMsg);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '讨论生成失败');
     } finally {
       setIsRunning(false);
     }
-  }, [teacher, students, inputValue, isRunning, activeSession, appendMessage, streamText]);
+  }, [teacher, students, inputValue, isRunning, isRecording, stopRecording, activeSession, appendMessage, streamText, autoSpeak, enqueueSpeak]);
 
   // Keyboard: Enter to send (Shift+Enter for newline)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -564,7 +591,7 @@ export function RoundtableWorkbench() {
 
   return (
     <div className="rt-layout">
-      {/* ── Left: session list ── */}
+      {/* 閳光偓閳光偓 Left: session list 閳光偓閳光偓 */}
       <aside className="rt-sidebar">
         <div className="rt-side-head">
           <h3>讨论记录</h3>
@@ -590,7 +617,7 @@ export function RoundtableWorkbench() {
         </div>
       </aside>
 
-      {/* ── Right: chat area ── */}
+      {/* 閳光偓閳光偓 Right: chat area 閳光偓閳光偓 */}
       <section className="rt-main">
         {/* Agent tags */}
         <div className="rt-main-head">
@@ -602,23 +629,16 @@ export function RoundtableWorkbench() {
               </span>
             ))}
           </div>
-          {activeSession && activeSession.messages.length > 0 && (
+          <div className="rt-head-actions">
             <button
               type="button"
-              className="rt-speak-all"
-              onClick={() => {
-                if (speakingMsgId) {
-                  stopSpeech();
-                } else {
-                  speakAll(activeSession.messages);
-                }
-              }}
-              title={speakingMsgId ? '停止朗读' : '连续朗读所有消息'}
+              className={cn('rt-auto-speak', autoSpeak && 'active')}
+              onClick={() => setAutoSpeak((prev) => !prev)}
+              title={autoSpeak ? '已开启自动播报' : '已关闭自动播报'}
             >
-              {speakingMsgId ? <Square className="size-3 fill-current" /> : <Volume2 className="size-3.5" />}
-              {speakingMsgId ? '停止' : '朗读'}
+              自动播报：{autoSpeak ? '开' : '关'}
             </button>
-          )}
+          </div>
         </div>
 
         {/* Messages */}
@@ -672,8 +692,6 @@ export function RoundtableWorkbench() {
                       message={msg}
                       isLast={idx === activeSession.messages.length - 1}
                       isRunning={isRunning}
-                      isSpeaking={speakingMsgId === msg.id}
-                      onSpeak={() => speak(msg)}
                     />
                   </div>
                 </motion.div>
@@ -706,12 +724,36 @@ export function RoundtableWorkbench() {
               onKeyDown={handleKeyDown}
               placeholder="输入问题，按 Enter 开始讨论..."
               rows={1}
-              disabled={isRunning}
+              disabled={isRunning || isProcessing}
               className="rt-textarea"
             />
+            <button
+              type="button"
+              className={cn('rt-voice-btn', (isRecording || isProcessing) && 'active')}
+              disabled={isRunning || !teacher}
+              onClick={() => {
+                if (isProcessing) return;
+                setError(null);
+                if (isRecording) {
+                  stopRecording();
+                } else {
+                  void startRecording();
+                }
+              }}
+              title={isRecording ? '停止录音' : '语音输入'}
+            >
+              {isProcessing ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : isRecording ? (
+                <Square className="size-3 fill-current" />
+              ) : (
+                <Mic className="size-4" />
+              )}
+              {isRecording ? '录音中' : '语音'}
+            </button>
             <Button
               onClick={startDebate}
-              disabled={isRunning || !inputValue.trim() || !teacher}
+              disabled={isRunning || isProcessing || !inputValue.trim() || !teacher}
               className={cn(
                 'shrink-0 h-9 rounded-lg gap-1.5 px-3',
                 !isRunning && inputValue.trim() && teacher
@@ -744,7 +786,7 @@ export function RoundtableWorkbench() {
           border-radius: 16px;
         }
 
-        /* ── Sidebar ── */
+        /* 閳光偓閳光偓 Sidebar 閳光偓閳光偓 */
         .rt-sidebar {
           display: flex;
           flex-direction: column;
@@ -798,7 +840,7 @@ export function RoundtableWorkbench() {
           text-align: center;
         }
 
-        /* ── Main chat area ── */
+        /* 閳光偓閳光偓 Main chat area 閳光偓閳光偓 */
         .rt-main {
           display: flex;
           flex-direction: column;
@@ -813,7 +855,13 @@ export function RoundtableWorkbench() {
           justify-content: space-between;
           gap: 8px;
         }
-        .rt-speak-all {
+        .rt-head-actions {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          flex-shrink: 0;
+        }
+        .rt-auto-speak {
           display: inline-flex;
           align-items: center;
           gap: 4px;
@@ -827,9 +875,8 @@ export function RoundtableWorkbench() {
           cursor: pointer;
           transition: all 0.15s;
           white-space: nowrap;
-          flex-shrink: 0;
         }
-        .rt-speak-all:hover {
+        .rt-auto-speak.active {
           background: #eef2ff;
           border-color: #a5b4fc;
           color: #4338ca;
@@ -882,7 +929,7 @@ export function RoundtableWorkbench() {
           justify-content: center;
         }
 
-        /* ── Composer ── */
+        /* 閳光偓閳光偓 Composer 閳光偓閳光偓 */
         .rt-composer {
           border-top: 1px solid #e2e8f0;
           background: #fff;
@@ -890,9 +937,41 @@ export function RoundtableWorkbench() {
         }
         .rt-input-row {
           display: grid;
-          grid-template-columns: 1fr auto;
+          grid-template-columns: 1fr auto auto;
           gap: 8px;
           align-items: end;
+        }
+        .rt-voice-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          justify-content: center;
+          height: 36px;
+          min-width: 78px;
+          padding: 0 10px;
+          border-radius: 10px;
+          border: 1px solid #e2e8f0;
+          background: #f8fafc;
+          color: #64748b;
+          font-size: 12px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s;
+          white-space: nowrap;
+        }
+        .rt-voice-btn:hover {
+          background: #eef2ff;
+          border-color: #a5b4fc;
+          color: #4338ca;
+        }
+        .rt-voice-btn.active {
+          background: #ede9fe;
+          border-color: #8b5cf6;
+          color: #6d28d9;
+        }
+        .rt-voice-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
         }
         .rt-textarea {
           width: 100%;
@@ -912,7 +991,7 @@ export function RoundtableWorkbench() {
           background: #fff;
         }
 
-        /* ── Responsive ── */
+        /* 閳光偓閳光偓 Responsive 閳光偓閳光偓 */
         @media (max-width: 960px) {
           .rt-layout {
             grid-template-columns: 1fr;
@@ -925,8 +1004,23 @@ export function RoundtableWorkbench() {
             max-height: none;
             min-height: 65vh;
           }
+          .rt-input-row {
+            grid-template-columns: 1fr;
+          }
+          .rt-voice-btn {
+            width: 100%;
+          }
+          .rt-main-head {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+          .rt-head-actions {
+            width: 100%;
+            justify-content: flex-end;
+          }
         }
       `}</style>
     </div>
   );
 }
+

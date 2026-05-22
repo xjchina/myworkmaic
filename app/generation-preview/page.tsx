@@ -186,16 +186,8 @@ function GenerationPreviewContent() {
 
         const parseFormData = new FormData();
         parseFormData.append('pdf', pdfFile);
-
-        if (currentSession.pdfProviderId) {
-          parseFormData.append('providerId', currentSession.pdfProviderId);
-        }
-        if (currentSession.pdfProviderConfig?.apiKey?.trim()) {
-          parseFormData.append('apiKey', currentSession.pdfProviderConfig.apiKey);
-        }
-        if (currentSession.pdfProviderConfig?.baseUrl?.trim()) {
-          parseFormData.append('baseUrl', currentSession.pdfProviderConfig.baseUrl);
-        }
+        // Force MinerU Cloud for embedded OpenMAIC classroom PDF parsing.
+        parseFormData.append('providerId', 'mineru-cloud');
 
         const parseResponse = await fetch('/api/parse-pdf', {
           method: 'POST',
