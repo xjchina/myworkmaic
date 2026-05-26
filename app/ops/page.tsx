@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
-type TabKey = 'overview' | 'prompts' | 'models' | 'users' | 'messages' | 'presets';
+type TabKey = 'overview' | 'prompts' | 'users' | 'messages';
 type OpsUser = { username: string; displayName: string };
 type Notice = { kind: 'loading' | 'success' | 'error'; title: string; message: string };
 
@@ -47,30 +47,6 @@ type BroadcastHistoryItem = {
   recipients: number;
 };
 
-type PresetItem = {
-  id: string;
-  contentType: string;
-  title: string;
-  sortOrder: number;
-  isVisible: boolean;
-  payload: unknown;
-};
-
-type ProviderRow = { id: string; config: { baseUrl?: string; models?: string[] } };
-type ModelsData = {
-  defaultRoute: { llm: string | null; asr: string | null; tts: string | null; ocr: string | null };
-  providers: {
-    llm: ProviderRow[];
-    asr: ProviderRow[];
-    tts: ProviderRow[];
-    ocr: ProviderRow[];
-    image: ProviderRow[];
-    video: ProviderRow[];
-    webSearch: ProviderRow[];
-  };
-};
-type ProviderGroupKey = keyof ModelsData['providers'];
-
 type PromptDraft = {
   name: string;
   systemPrompt: string;
@@ -83,15 +59,59 @@ type PromptDraft = {
 const METRIC_LABELS: Record<string, string> = {
   totalUsers: '累计用户',
   newUsers7d: '近7天新增',
+  newUsers30d: '近30天新增',
   activeUsers1d: '近1天活跃',
+  activeUsers7d: '近7天活跃',
   calls7d: '近7天调用量',
   errorRate7d: '近7天错误率(%)',
   moderationBlockRate7d: '审核拦截率(%)',
   activeBans: '当前封禁数',
 };
+const FEATURE_LABELS: Record<string, string> = {
+  knowledge: '知识宇宙',
+  exercise: '互动练习',
+  classroom: '教案课堂',
+  'knowledge-universe': '知识宇宙',
+  'lesson-classroom': '教案课堂',
+  roundtable: '圆桌讨论',
+  'interactive-practice': '互动练习',
+  'pdf-tools': 'PDF 工具',
+  'web-search': '网络搜索',
+  'chat-completions': '对话生成',
+  moderation: '内容审核',
+  tts: '语音合成',
+  asr: '语音识别',
+  ocr: 'OCR 识别',
+  login: '登录服务',
+  register: '注册服务',
+  announcement: '公告服务',
+};
+function getFeatureLabel(feature: string): string {
+  const key = feature.trim();
+  if (FEATURE_LABELS[key]) return FEATURE_LABELS[key];
+
+  const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalized.includes('knowledge')) return '知识宇宙';
+  if (normalized.includes('exercise')) return '互动练习';
+  if (normalized.includes('classroom')) return '教案课堂';
+  if (normalized.includes('roundtable')) return '圆桌讨论';
+  return key;
+}
 
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '道法', '通用'];
 const GRADES = ['小学', '初中', '高中', '通用'];
+const NAV_ITEMS: Array<{ key: TabKey; label: string; icon: string }> = [
+  { key: 'overview', label: '数据总览', icon: '01' },
+  { key: 'users', label: '用户管理', icon: '02' },
+  { key: 'prompts', label: '提示词中心', icon: '03' },
+  { key: 'messages', label: '公告管理', icon: '04' },
+];
+const TAB_META: Record<TabKey, { title: string; subtitle: string }> = {
+  overview: { title: '数据总览', subtitle: '查看新增用户、调用量、错误率和审核拦截趋势。' },
+  prompts: { title: '提示词中心', subtitle: '可视化管理各学科老师提示词，支持草稿、发布和回滚。' },
+  users: { title: '用户与会员', subtitle: '管理账号状态、会员等级以及封禁策略。' },
+  messages: { title: '公告管理', subtitle: '发布平台公告，通知将展示在用户端消息区。' },
+};
 
 const baseInput =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100';
@@ -145,17 +165,6 @@ export default function OpsAdminPage() {
   const [promptDraft, setPromptDraft] = useState<PromptDraft>(emptyPromptDraft);
   const [renderPreview, setRenderPreview] = useState('');
 
-  const [models, setModels] = useState<ModelsData | null>(null);
-  const [routeForm, setRouteForm] = useState({ llm: '', asr: '', tts: '', ocr: '' });
-  const [providerForm, setProviderForm] = useState({
-    group: 'llm' as ProviderGroupKey,
-    id: '',
-    apiKey: '',
-    baseUrl: '',
-    models: '',
-    proxy: '',
-  });
-
   const [users, setUsers] = useState<UserRow[]>([]);
   const [userQuery, setUserQuery] = useState('');
 
@@ -163,13 +172,39 @@ export default function OpsAdminPage() {
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastContent, setBroadcastContent] = useState('');
 
-  const [presets, setPresets] = useState<PresetItem[]>([]);
-
   const selectedPrompt = useMemo(
     () => prompts.find((item) => item.id === selectedPromptId) || null,
     [prompts, selectedPromptId],
   );
+  const currentTabMeta = TAB_META[tab];
   const canEditSelectedPrompt = selectedPrompt?.status === 'draft';
+  const overviewMetricEntries = useMemo(() => Object.entries(overview?.metrics || {}), [overview]);
+  const overviewMaxMetricValue = useMemo(
+    () => Math.max(...overviewMetricEntries.map(([, v]) => Number(v) || 0), 1),
+    [overviewMetricEntries],
+  );
+  const featureUsageSorted = useMemo(
+    () => [...(overview?.featureUsage7d || [])].sort((a, b) => b.total - a.total),
+    [overview],
+  );
+  const featureUsageTotal = useMemo(
+    () => featureUsageSorted.reduce((sum, item) => sum + item.total, 0),
+    [featureUsageSorted],
+  );
+  const healthScore = useMemo(() => {
+    if (!overview) return 100;
+    const errorRate = Number(overview.metrics.errorRate7d || 0);
+    const moderationRate = Number(overview.metrics.moderationBlockRate7d || 0);
+    const activeBans = Number(overview.metrics.activeBans || 0);
+    const score = 100 - errorRate * 2.2 - moderationRate * 1.3 - Math.min(activeBans, 30) * 0.7;
+    return Math.max(0, Math.min(100, Math.round(score)));
+  }, [overview]);
+  const healthColorClass =
+    healthScore >= 85
+      ? 'text-emerald-600'
+      : healthScore >= 70
+        ? 'text-amber-600'
+        : 'text-rose-600';
 
   useEffect(() => {
     if (!selectedPrompt) {
@@ -220,17 +255,6 @@ export default function OpsAdminPage() {
     }
   }, [promptGrade, promptMode, promptSubject, selectedPromptId]);
 
-  const loadModels = useCallback(async () => {
-    const data = await requestJson<ModelsData>('/api/ops/models');
-    setModels(data);
-    setRouteForm({
-      llm: data.defaultRoute.llm || '',
-      asr: data.defaultRoute.asr || '',
-      tts: data.defaultRoute.tts || '',
-      ocr: data.defaultRoute.ocr || '',
-    });
-  }, []);
-
   const loadUsers = useCallback(async () => {
     const params = new URLSearchParams();
     if (userQuery.trim()) params.set('q', userQuery.trim());
@@ -241,11 +265,6 @@ export default function OpsAdminPage() {
   const loadMessages = useCallback(async () => {
     const h = await requestJson<{ items: BroadcastHistoryItem[] }>('/api/ops/messages/history?limit=30');
     setHistory(h.items || []);
-  }, []);
-
-  const loadPresets = useCallback(async () => {
-    const data = await requestJson<{ items: PresetItem[] }>('/api/ops/presets');
-    setPresets(data.items || []);
   }, []);
 
   useEffect(() => {
@@ -268,10 +287,8 @@ export default function OpsAdminPage() {
       try {
         if (tab === 'overview') await loadOverview();
         if (tab === 'prompts') await loadPrompts();
-        if (tab === 'models') await loadModels();
         if (tab === 'users') await loadUsers();
         if (tab === 'messages') await loadMessages();
-        if (tab === 'presets') await loadPresets();
       } catch (e) {
         setError(e instanceof Error ? e.message : '加载失败');
       } finally {
@@ -279,7 +296,7 @@ export default function OpsAdminPage() {
       }
     };
     void run();
-  }, [loadMessages, loadModels, loadOverview, loadPresets, loadPrompts, loadUsers, tab, user]);
+  }, [loadMessages, loadOverview, loadPrompts, loadUsers, tab, user]);
 
   const logout = async () => {
     await fetch('/api/ops/auth/logout', { method: 'POST' });
@@ -289,70 +306,155 @@ export default function OpsAdminPage() {
   if (!user) return null;
 
   return (
-    <div className="min-h-dvh bg-slate-100 text-slate-900">
-      <header className="sticky top-0 z-20 border-b border-slate-800/60 bg-slate-950/95 px-5 py-3.5 text-white">
-        <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between gap-4">
-          <h1 className="text-lg font-semibold">运营教研后台</h1>
-          <button className={`${btnGhost} border-slate-700 bg-slate-900 text-slate-100`} onClick={logout} type="button">退出</button>
-        </div>
-      </header>
-
-      <div className="mx-auto grid w-full max-w-[1400px] grid-cols-1 gap-4 px-4 py-4 lg:grid-cols-[240px_1fr]">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          {[
-            ['overview', '总览看板'],
-            ['prompts', '提示词中心'],
-            ['models', '模型与提供方'],
-            ['users', '用户与会员'],
-            ['messages', '运营消息'],
-            ['presets', '预置内容'],
-          ].map(([k, label]) => (
-            <button
-              key={k}
-              className={`mb-1.5 w-full rounded-xl px-3 py-2.5 text-left text-sm font-bold transition ${
-                tab === k ? 'bg-blue-700 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-              onClick={() => setTab(k as TabKey)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
+    <div className="h-dvh overflow-hidden bg-[#dfe3e8] text-slate-900">
+      <div className="flex h-full w-full">
+        <aside className="h-full w-[260px] shrink-0 overflow-y-auto border-r border-slate-800 bg-gradient-to-b from-[#141a2d] to-[#111729] text-slate-100">
+          <div className="border-b border-slate-800/80 px-5 py-7">
+            <div className="flex items-center gap-3">
+              <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-500 text-xl font-bold">知</div>
+              <div>
+                <div className="text-2xl font-bold tracking-wide">知识空间</div>
+                <div className="text-xs text-slate-400">管理后台</div>
+              </div>
+            </div>
+          </div>
+          <nav className="space-y-1.5 p-3">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.key}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-lg transition',
+                  tab === item.key
+                    ? 'bg-indigo-900/60 font-semibold text-white shadow-inner shadow-indigo-900/60'
+                    : 'text-slate-300 hover:bg-slate-800/70 hover:text-white',
+                )}
+                onClick={() => setTab(item.key)}
+                type="button"
+              >
+                <span className={cn(
+                  'grid h-7 w-7 place-items-center rounded-md text-xs',
+                  tab === item.key ? 'bg-indigo-400/20 text-indigo-200' : 'bg-slate-700/40 text-slate-300',
+                )}>
+                  {item.icon}
+                </span>
+                <span className="text-base">{item.label}</span>
+              </button>
+            ))}
+          </nav>
         </aside>
 
-        <main className="space-y-4">
-          {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div> : null}
-          {loading ? <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">加载中...</div> : null}
+        <div className="flex min-w-0 flex-1 flex-col overflow-y-auto">
+          <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-6">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h1 className="text-[38px] font-bold leading-none tracking-tight text-slate-950">{currentTabMeta.title}</h1>
+                <p className="mt-3 text-xl text-slate-400">{currentTabMeta.subtitle}</p>
+              </div>
+              <button className={btnPrimary} onClick={logout} type="button">退出登录</button>
+            </div>
+          </header>
 
-          {tab === 'overview' && overview ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold">总览看板</h2>
-              <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
-                {Object.entries(overview.metrics).map(([k, v]) => (
-                  <div key={k} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="text-xs text-slate-500">{METRIC_LABELS[k] || k}</div>
-                    <div className="mt-1 text-xl font-semibold">{v}</div>
+          <div className="flex-1 p-6">
+            <main className="space-y-4">
+              {error ? <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div> : null}
+              {loading ? <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm">加载中...</div> : null}
+              {tab === 'overview' && overview ? (
+                <section className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                    {overviewMetricEntries.map(([k, v], idx) => {
+                      const value = Number(v) || 0;
+                      const ratio = Math.max(6, Math.min(100, Math.round((value / overviewMaxMetricValue) * 100)));
+                      const bgClass = ['from-blue-50 to-indigo-50', 'from-cyan-50 to-sky-50', 'from-emerald-50 to-teal-50', 'from-violet-50 to-fuchsia-50'][idx % 4];
+                      return (
+                        <div key={k} className={`rounded-2xl border border-slate-200 bg-gradient-to-br ${bgClass} p-4 shadow-sm`}>
+                          <div className="text-xs font-semibold text-slate-600">{METRIC_LABELS[k] || k}</div>
+                          <div className="mt-2 text-2xl font-bold text-slate-900">{value.toLocaleString()}</div>
+                          <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/80">
+                            <div className="h-full rounded-full bg-blue-500" style={{ width: `${ratio}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
 
-          {tab === 'users' ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold">用户与会员</h2>
-              <div className="mt-3 flex gap-2">
-                <input className={`${baseInput} flex-1`} value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="手机号 / 昵称 / 用户ID" />
-                <button className={btnGhost} onClick={loadUsers} type="button">搜索</button>
-              </div>
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full min-w-[760px] text-sm">
-                  <thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">用户</th><th className="px-3 py-2 text-left">会员</th><th className="px-3 py-2 text-left">到期</th><th className="px-3 py-2 text-left">封禁</th><th className="px-3 py-2 text-left">操作</th></tr></thead>
-                  <tbody>{users.map((item) => (<tr key={item.id} className="border-t border-slate-100"><td className="px-3 py-2">{item.displayName} / {item.phone}</td><td className="px-3 py-2">{item.subscriptionType}</td><td className="px-3 py-2">{item.subscriptionExpiresAt || '-'}</td><td className="px-3 py-2">{item.banned ? '是' : '否'}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button className={btnGhost} onClick={() => void runWithNotice('升级VIP', async () => { await requestJson(`/api/ops/users/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriptionType: 'vip' }) }); await loadUsers(); }, '已升级为VIP')} type="button">升级VIP</button><button className={btnGhost} onClick={() => void runWithNotice(item.banned ? '解封用户' : '封禁用户', async () => { await requestJson(`/api/ops/users/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banAction: item.banned ? 'unban' : 'ban' }) }); await loadUsers(); }, item.banned ? '已解封' : '已封禁24小时')} type="button">{item.banned ? '解封' : '封禁24h'}</button></div></td></tr>))}</tbody>
-                </table>
-              </div>
-            </section>
-          ) : null}
+                  <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-base font-bold text-slate-900">功能调用占比（近7天）</h2>
+                        <span className="text-xs text-slate-500">总调用 {featureUsageTotal.toLocaleString()}</span>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {featureUsageSorted.length ? (
+                          featureUsageSorted.map((item, idx) => {
+                            const ratio = featureUsageTotal > 0 ? (item.total / featureUsageTotal) * 100 : 0;
+                            const barColor = ['bg-blue-500', 'bg-indigo-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-violet-500'][idx % 5];
+                            return (
+                              <div key={`${item.feature}-${idx}`} className="space-y-1.5">
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="font-semibold text-slate-700">{getFeatureLabel(item.feature)}</span>
+                                  <span className="text-slate-500">{item.total.toLocaleString()} 次 · {ratio.toFixed(1)}%</span>
+                                </div>
+                                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                                  <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.max(2, ratio)}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">暂无功能调用数据</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <h2 className="text-base font-bold text-slate-900">平台健康指数</h2>
+                      <p className="mt-1 text-xs text-slate-500">根据错误率、审核拦截率和封禁数综合计算</p>
+                      <div className="mt-4 flex items-center gap-4">
+                        <div
+                          className="grid h-28 w-28 place-items-center rounded-full"
+                          style={{
+                            background: `conic-gradient(#3b82f6 ${healthScore * 3.6}deg, #e2e8f0 0deg)`,
+                          }}
+                        >
+                          <div className="grid h-22 w-22 place-items-center rounded-full bg-white">
+                            <div className={cn('text-2xl font-extrabold', healthColorClass)}>{healthScore}</div>
+                          </div>
+                        </div>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex items-center justify-between gap-5">
+                            <span className="text-slate-500">错误率</span>
+                            <span className="font-semibold text-slate-800">{Number(overview.metrics.errorRate7d || 0).toFixed(2)}%</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-5">
+                            <span className="text-slate-500">审核拦截率</span>
+                            <span className="font-semibold text-slate-800">{Number(overview.metrics.moderationBlockRate7d || 0).toFixed(2)}%</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-5">
+                            <span className="text-slate-500">封禁用户</span>
+                            <span className="font-semibold text-slate-800">{Number(overview.metrics.activeBans || 0)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              ) : null}
+          
+              {tab === 'users' ? (
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h2 className="text-base font-semibold">用户与会员</h2>
+                  <div className="mt-3 flex gap-2">
+                    <input className={`${baseInput} flex-1`} value={userQuery} onChange={(e) => setUserQuery(e.target.value)} placeholder="手机号 / 昵称 / 用户ID" />
+                    <button className={btnGhost} onClick={loadUsers} type="button">搜索</button>
+                  </div>
+                  <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="w-full min-w-[760px] text-sm">
+                      <thead className="bg-slate-50 text-slate-600"><tr><th className="px-3 py-2 text-left">用户</th><th className="px-3 py-2 text-left">会员</th><th className="px-3 py-2 text-left">到期</th><th className="px-3 py-2 text-left">封禁</th><th className="px-3 py-2 text-left">操作</th></tr></thead>
+                      <tbody>{users.map((item) => (<tr key={item.id} className="border-t border-slate-100"><td className="px-3 py-2">{item.displayName} / {item.phone}</td><td className="px-3 py-2">{item.subscriptionType}</td><td className="px-3 py-2">{item.subscriptionExpiresAt || '-'}</td><td className="px-3 py-2">{item.banned ? '是' : '否'}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><button className={btnGhost} onClick={() => void runWithNotice('升级VIP', async () => { await requestJson(`/api/ops/users/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscriptionType: 'vip' }) }); await loadUsers(); }, '已升级为VIP')} type="button">升级VIP</button><button className={btnGhost} onClick={() => void runWithNotice(item.banned ? '解封用户' : '封禁用户', async () => { await requestJson(`/api/ops/users/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ banAction: item.banned ? 'unban' : 'ban' }) }); await loadUsers(); }, item.banned ? '已解封' : '已封禁24小时')} type="button">{item.banned ? '解封' : '封禁24h'}</button></div></td></tr>))}</tbody>
+                    </table>
+                  </div>
+                </section>
+              ) : null}
 
           {tab === 'messages' ? (
             <section className="space-y-4">
@@ -601,50 +703,9 @@ export default function OpsAdminPage() {
             </section>
           ) : null}
 
-          {tab === 'models' ? (
-            <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold">模型与提供方</h2>
-              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-                {(['llm', 'asr', 'tts', 'ocr'] as const).map((k) => (
-                  <input key={k} className={baseInput} value={routeForm[k]} onChange={(e) => setRouteForm((r) => ({ ...r, [k]: e.target.value }))} placeholder={`${k.toUpperCase()}默认路由`} />
-                ))}
-              </div>
-              <button className={btnPrimary} type="button" onClick={() => void runWithNotice('保存默认路由', async () => { await requestJson('/api/ops/models', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ defaultRoute: routeForm }) }); await loadModels(); }, '默认路由已保存')}>保存默认路由</button>
-
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                <select className={baseInput} value={providerForm.group} onChange={(e) => setProviderForm((p) => ({ ...p, group: e.target.value as ProviderGroupKey }))}><option value="llm">LLM</option><option value="asr">ASR</option><option value="tts">TTS</option><option value="ocr">OCR</option><option value="image">Image</option><option value="video">Video</option><option value="webSearch">WebSearch</option></select>
-                <input className={baseInput} value={providerForm.id} onChange={(e) => setProviderForm((p) => ({ ...p, id: e.target.value }))} placeholder="提供方ID" />
-                <input className={baseInput} value={providerForm.baseUrl} onChange={(e) => setProviderForm((p) => ({ ...p, baseUrl: e.target.value }))} placeholder="Base URL" />
-                <input className={baseInput} value={providerForm.apiKey} onChange={(e) => setProviderForm((p) => ({ ...p, apiKey: e.target.value }))} placeholder="API Key（可空）" />
-                <input className={baseInput} value={providerForm.models} onChange={(e) => setProviderForm((p) => ({ ...p, models: e.target.value }))} placeholder="模型列表（逗号分隔）" />
-                <input className={baseInput} value={providerForm.proxy} onChange={(e) => setProviderForm((p) => ({ ...p, proxy: e.target.value }))} placeholder="代理地址（可空）" />
-              </div>
-              <div className="flex gap-2">
-                <button className={btnPrimary} type="button" onClick={() => void runWithNotice('保存提供方', async () => { await requestJson('/api/ops/models', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(providerForm) }); await loadModels(); }, '提供方已保存并生效')}>保存提供方</button>
-                <button className={btnGhost} type="button" onClick={() => void runWithNotice('删除提供方', async () => { await requestJson('/api/ops/models', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group: providerForm.group, id: providerForm.id }) }); await loadModels(); }, '提供方已删除')}>删除提供方</button>
-              </div>
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {models
-                  ? Object.entries(models.providers).flatMap(([group, rows]) =>
-                      rows.map((row) => (
-                        <button key={`${group}-${row.id}`} type="button" className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-left text-sm" onClick={() => setProviderForm({ group: group as ProviderGroupKey, id: row.id, apiKey: '', baseUrl: row.config.baseUrl || '', models: (row.config.models || []).join(','), proxy: '' })}>
-                          <div className="font-medium text-slate-800">{row.id}</div>
-                          <div className="text-slate-500">{group}</div>
-                        </button>
-                      )),
-                    )
-                  : null}
-              </div>
-            </section>
-          ) : null}
-
-          {tab === 'presets' ? (
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <h2 className="text-base font-semibold">预置内容</h2>
-              <div className="mt-3 space-y-2">{presets.map((item) => (<div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm"><div className="flex items-center justify-between gap-2"><div className="font-semibold">{item.title}</div><div className="flex gap-2"><button className={btnGhost} onClick={() => void runWithNotice('更新预置状态', async () => { await requestJson(`/api/ops/presets/${item.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contentType: item.contentType, title: item.title, payload: item.payload, sortOrder: item.sortOrder, isVisible: !item.isVisible }) }); await loadPresets(); }, '预置状态已更新')} type="button">{item.isVisible ? '设为隐藏' : '设为显示'}</button><button className={btnGhost} onClick={() => void runWithNotice('删除预置', async () => { await requestJson(`/api/ops/presets/${item.id}`, { method: 'DELETE' }); await loadPresets(); }, '预置已删除')} type="button">删除</button></div></div><div className="mt-1 text-slate-600">类型：{item.contentType} · 排序：{item.sortOrder}</div></div>))}</div>
-            </section>
-          ) : null}
         </main>
+      </div>
+        </div>
       </div>
 
       {notice ? (
