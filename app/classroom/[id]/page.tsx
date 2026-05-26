@@ -4,7 +4,7 @@ import { Stage } from '@/components/stage';
 import { ThemeProvider } from '@/lib/hooks/use-theme';
 import { useStageStore } from '@/lib/store';
 import { loadImageMapping } from '@/lib/utils/image-storage';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Suspense, useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useSceneGenerator } from '@/lib/hooks/use-scene-generator';
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
@@ -17,6 +17,14 @@ import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 const log = createLogger('Classroom');
 
 export default function ClassroomDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClassroomDetailContent />
+    </Suspense>
+  );
+}
+
+function ClassroomDetailContent() {
   const { isLoggedIn } = useAuthGuard();
   const params = useParams();
   const searchParams = useSearchParams();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { Suspense, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Sparkles } from 'lucide-react';
@@ -8,6 +8,14 @@ import { AppShell } from '@/components/shell/app-shell';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 export default function ClassroomPage() {
+  return (
+    <Suspense fallback={null}>
+      <ClassroomPageContent />
+    </Suspense>
+  );
+}
+
+function ClassroomPageContent() {
   const { isLoggedIn } = useAuthGuard();
   const searchParams = useSearchParams();
   const iframeSrc = useMemo(() => {
