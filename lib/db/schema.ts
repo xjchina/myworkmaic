@@ -168,3 +168,84 @@ export const userMessages = mysqlTable('user_messages', {
   userReadIdx: index('user_messages_user_read_idx').on(table.userId, table.isRead),
   userCategoryIdx: index('user_messages_user_category_idx').on(table.userId, table.category),
 }));
+
+/**
+ * Ops knowledge prompt versions table.
+ *
+ * status: draft | published | archived
+ * mode: dialog | quick
+ */
+export const opsKnowledgePromptVersions = mysqlTable('ops_knowledge_prompt_versions', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  subject: varchar('subject', { length: 32 }).notNull(), // 语文/数学/英语/物理/化学/生物/历史/地理/道法/通用
+  gradeSegment: varchar('grade_segment', { length: 32 }).notNull(), // 小学/初中/高中/通用
+  mode: varchar('mode', { length: 16 }).notNull(), // dialog | quick
+  version: int('version').notNull(),
+  status: varchar('status', { length: 16 }).notNull().default('draft'),
+  name: varchar('name', { length: 120 }).notNull(),
+  systemPrompt: text('system_prompt').notNull(),
+  teachingStyle: text('teaching_style').notNull(),
+  outputFormat: text('output_format').notNull(),
+  safetyConstraints: text('safety_constraints').notNull(),
+  antiDivergenceRules: text('anti_divergence_rules').notNull(),
+  variablesJson: text('variables_json'),
+  rollbackFromVersionId: varchar('rollback_from_version_id', { length: 36 }),
+  createdBy: varchar('created_by', { length: 64 }).notNull(),
+  publishedBy: varchar('published_by', { length: 64 }),
+  publishedAt: timestamp('published_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  dimVersionUnique: uniqueIndex('ops_kp_dim_version_unique').on(
+    table.subject,
+    table.gradeSegment,
+    table.mode,
+    table.version,
+  ),
+  dimStatusIdx: index('ops_kp_dim_status_idx').on(table.subject, table.gradeSegment, table.mode, table.status),
+  createdAtIdx: index('ops_kp_created_at_idx').on(table.createdAt),
+}));
+
+/**
+ * Ops message templates table.
+ */
+export const opsMessageTemplates = mysqlTable('ops_message_templates', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  name: varchar('name', { length: 80 }).notNull(),
+  category: varchar('category', { length: 24 }).notNull().default('system'),
+  titleTemplate: varchar('title_template', { length: 120 }).notNull(),
+  contentTemplate: text('content_template').notNull(),
+  actionUrl: varchar('action_url', { length: 500 }),
+  variablesJson: text('variables_json'),
+  isEnabled: boolean('is_enabled').notNull().default(true),
+  createdBy: varchar('created_by', { length: 64 }).notNull(),
+  updatedBy: varchar('updated_by', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  nameUnique: uniqueIndex('ops_msg_tpl_name_unique').on(table.name),
+  enabledIdx: index('ops_msg_tpl_enabled_idx').on(table.isEnabled),
+}));
+
+/**
+ * Ops preset content table.
+ */
+export const opsPresetContents = mysqlTable('ops_preset_contents', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  contentType: varchar('content_type', { length: 24 }).notNull(), // classroom | exercise | download
+  title: varchar('title', { length: 120 }).notNull(),
+  summary: text('summary'),
+  payloadJson: text('payload_json').notNull(),
+  sortOrder: int('sort_order').notNull().default(0),
+  isVisible: boolean('is_visible').notNull().default(true),
+  createdBy: varchar('created_by', { length: 64 }).notNull(),
+  updatedBy: varchar('updated_by', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  typeVisibleSortIdx: index('ops_preset_type_visible_sort_idx').on(
+    table.contentType,
+    table.isVisible,
+    table.sortOrder,
+  ),
+}));

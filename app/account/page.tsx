@@ -95,8 +95,52 @@ export default function AccountPage() {
   const isPhoneBound = useSessionStore((s) => s.isPhoneBound);
   const userCreatedAt = useSessionStore((s) => s.userCreatedAt);
   const userLastLoginAt = useSessionStore((s) => s.userLastLoginAt);
+  const refreshSession = useSessionStore((s) => s.refreshSession);
   const logout = useSessionStore((s) => s.logout);
   const [deleting, setDeleting] = useState(false);
+  const [nicknameInput, setNicknameInput] = useState('');
+  const [savingNickname, setSavingNickname] = useState(false);
+
+  useEffect(() => {
+    setNicknameInput(displayName || '学员');
+  }, [displayName]);
+
+  const handleSaveNickname = async () => {
+    const next = nicknameInput.trim();
+    if (!next) {
+      window.alert('昵称不能为空。');
+      return;
+    }
+    if (next.length > 50) {
+      window.alert('昵称最多 50 个字符。');
+      return;
+    }
+    if (next === (displayName || '学员')) {
+      return;
+    }
+
+    setSavingNickname(true);
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: next }),
+      });
+      const data = await res
+        .json()
+        .catch(() => ({} as { success?: boolean; error?: string; message?: string }));
+      if (!res.ok || !data.success) {
+        window.alert(data.error || data.message || '昵称更新失败，请稍后重试。');
+        return;
+      }
+      await refreshSession();
+      window.alert('昵称已更新。');
+    } catch {
+      window.alert('网络异常，昵称更新失败，请稍后重试。');
+    } finally {
+      setSavingNickname(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     if (deleting) return;
@@ -148,7 +192,23 @@ export default function AccountPage() {
           <div className="info-grid">
             <div className="info-item">
               <span className="info-label">昵称</span>
-              <strong>{displayName || '学员'}</strong>
+              <div className="nickname-edit">
+                <input
+                  className="nickname-input"
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  placeholder="请输入昵称"
+                  maxLength={50}
+                />
+                <button
+                  type="button"
+                  className="nickname-save"
+                  disabled={savingNickname}
+                  onClick={() => void handleSaveNickname()}
+                >
+                  {savingNickname ? '保存中...' : '保存'}
+                </button>
+              </div>
             </div>
             <div className="info-item">
               <span className="info-label">手机号</span>
@@ -256,6 +316,43 @@ export default function AccountPage() {
         .info-item strong {
           color: #0f172a;
           font-size: 14px;
+        }
+        .nickname-edit {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
+        .nickname-input {
+          flex: 1;
+          min-width: 0;
+          border: 1px solid #cbd5e1;
+          border-radius: 8px;
+          padding: 6px 10px;
+          font-size: 14px;
+          color: #0f172a;
+          background: #fff;
+        }
+        .nickname-input:focus {
+          outline: none;
+          border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+        .nickname-save {
+          border: none;
+          border-radius: 8px;
+          background: #4f46e5;
+          color: #fff;
+          padding: 6px 10px;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .nickname-save:hover {
+          background: #4338ca;
+        }
+        .nickname-save:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
         }
         .btn {
           border: none;

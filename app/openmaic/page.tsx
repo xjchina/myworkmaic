@@ -89,6 +89,7 @@ function HomePage() {
   const [settingsSection, setSettingsSection] = useState<
     import('@/lib/types/settings').SettingsSection | undefined
   >(undefined);
+  const setupIntentHandledRef = useRef(false);
 
   // Draft cache for requirement text
   const { cachedValue: cachedRequirement, updateCache: updateRequirementCache } =
@@ -119,6 +120,35 @@ function HomePage() {
       setEmbeddedMode(false);
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /* eslint-disable react-hooks/set-state-in-effect -- URL parameters intentionally control initial settings modal state */
+  useEffect(() => {
+    if (!clientReady || setupIntentHandledRef.current) return;
+    try {
+      const url = new URL(window.location.href);
+      const openSettings = url.searchParams.get('openSettings');
+      const reason = url.searchParams.get('reason');
+      if (!openSettings && !reason) return;
+
+      setupIntentHandledRef.current = true;
+
+      if (openSettings === 'providers') {
+        setSettingsSection('providers');
+        setSettingsOpen(true);
+      }
+      if (reason === 'model-required') {
+        toast.error('请先设置模型');
+      }
+
+      url.searchParams.delete('openSettings');
+      url.searchParams.delete('reason');
+      const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+      window.history.replaceState(window.history.state, '', nextUrl);
+    } catch {
+      /* ignore malformed URL */
+    }
+  }, [clientReady]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Hydrate client-only state after mount (avoids SSR mismatch)

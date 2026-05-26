@@ -23,6 +23,15 @@ interface ChatMessage {
   content: string;
 }
 
+type PromptSourceMeta = {
+  id: string;
+  subject: string;
+  gradeSegment: string;
+  mode: 'dialog' | 'quick';
+  version: number;
+  status: string;
+};
+
 function parseErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message;
   return fallback;
@@ -390,7 +399,7 @@ function AnalysisResult({ content, onRedo }: { content: string; onRedo: () => vo
           );
         })}
         {/* If no sections detected, show raw content */}
-        {sections.length <= 1 && (
+        {sections.length === 0 && (
           <div className="result-section" dangerouslySetInnerHTML={{ __html: renderHtml(content) }} />
         )}
       </div>
@@ -432,6 +441,7 @@ function RecallPageContent() {
   const { checkAndUpgrade, UpgradeModal } = useUpgradeGuard();
   const searchParams = useSearchParams();
   const subject = searchParams.get('subject') || '数学';
+  const studentLevel = searchParams.get('grade')?.trim() || undefined;
   const subjectIcon = SUBJECT_ICONS[subject] || '📚';
 
   // ─── State ──────────────────────────────────
@@ -453,6 +463,7 @@ function RecallPageContent() {
   const [dialogLoading, setDialogLoading] = useState(false);
   const [dialogDone, setDialogDone] = useState(false);
   const [dialogResult, setDialogResult] = useState<string | null>(null);
+  const [activePromptSource, setActivePromptSource] = useState<PromptSourceMeta | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const dialogInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -467,9 +478,9 @@ function RecallPageContent() {
       'Content-Type': 'application/json',
       'x-model': modelConfig.modelString || '',
       'x-api-key': modelConfig.apiKey || '',
+      'x-base-url': modelConfig.baseUrl || '',
+      'x-provider-type': modelConfig.providerType || '',
     };
-    if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
-    if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
     return headers;
   }, []);
 
@@ -516,12 +527,13 @@ function RecallPageContent() {
       fetch('/api/knowledge/recall', {
         method: 'POST',
         headers: getModelHeaders(),
-        body: JSON.stringify({ chapter, subject, dialogueHistory: [], currentStep: 1 }),
+        body: JSON.stringify({ chapter, subject, studentLevel, dialogueHistory: [], currentStep: 1 }),
       })
         .then((r) => r.json())
         .then((data) => {
           const firstContent = data.content || '让我们开始吧！今天学了什么？';
           setMessages([{ role: 'assistant', content: firstContent }]);
+          setActivePromptSource(data.promptSource || null);
           const detectedStep = typeof data.step === 'number' ? data.step : extractDialogStepFromText(firstContent);
           if (detectedStep) {
             setDialogStep(Math.min(Math.max(detectedStep - 1, 0), 4));
@@ -539,7 +551,7 @@ function RecallPageContent() {
       setFormData({});
       setOcrPreview(null);
     }
-  }, [chapter, checkAndUpgrade, getModelHeaders, subject]);
+  }, [chapter, checkAndUpgrade, subject, studentLevel, getModelHeaders]);
 
   // ─── Dialog: send message ───────────────────
   const handleDialogSend = useCallback(async () => {
@@ -563,12 +575,14 @@ function RecallPageContent() {
         body: JSON.stringify({
           chapter,
           subject,
+          studentLevel,
           dialogueHistory,
           currentStep: Math.min(dialogStep + 1, 5),
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
+      setActivePromptSource(data.promptSource || null);
 
       const aiContent = data.content || '';
       const hasSummary = typeof data.isFinal === 'boolean' ? data.isFinal : looksLikeDialogSummary(aiContent);
@@ -601,7 +615,7 @@ function RecallPageContent() {
     } finally {
       setDialogLoading(false);
     }
-  }, [dialogInput, dialogLoading, messages, chapter, subject, dialogStep, saveToKnowledgeTree, getModelHeaders]);
+  }, [dialogInput, dialogLoading, messages, chapter, subject, studentLevel, dialogStep, saveToKnowledgeTree, getModelHeaders]);
 
   // ─── Form: submit ────────────────────────────
   const handleFormSubmit = useCallback(async () => {
@@ -612,11 +626,12 @@ function RecallPageContent() {
       const res = await fetch('/api/knowledge/recall', {
         method: 'POST',
         headers: getModelHeaders(),
-        body: JSON.stringify({ chapter: chapter.trim(), steps: formData, subject }),
+        body: JSON.stringify({ chapter: chapter.trim(), steps: formData, subject, studentLevel }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       setFormResult(data.content);
+      setActivePromptSource(data.promptSource || null);
       const keywordSeed = extractKeywordsFromText(
         [formData.step1, formData.step2Focus, formData.step3, formData.step5].filter(Boolean).join(','),
       );
@@ -630,7 +645,7 @@ function RecallPageContent() {
     } finally {
       setFormLoading(false);
     }
-  }, [chapter, formData, saveToKnowledgeTree, subject, getModelHeaders]);
+  }, [chapter, formData, saveToKnowledgeTree, subject, studentLevel, getModelHeaders]);
 
   // ─── OCR: upload photo ───────────────────────
   const handlePhotoUpload = useCallback(async (file: File) => {
@@ -677,6 +692,7 @@ function RecallPageContent() {
     setMode(null);
     setFormResult(null);
     setDialogResult(null);
+    setActivePromptSource(null);
     setFormData({});
     setMessages([]);
     setDialogStep(0);
@@ -729,6 +745,11 @@ function RecallPageContent() {
 
           {/* Right — chat */}
           <div className="dialog-chat">
+            {activePromptSource ? (
+              <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / v{activePromptSource.version}
+              </div>
+            ) : null}
             <div className="chat-messages">
               {messages.map((msg, i) => (
                 <div key={i} className={`chat-msg ${msg.role}`}>
@@ -796,7 +817,7 @@ function RecallPageContent() {
           .dialog-chat { flex: 1; min-width: 0; background: #fff; border-radius: 14px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; overflow: hidden; }
           .chat-messages { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 14px; max-height: 520px; overflow-y: auto; }
           .chat-msg { display: flex; gap: 10px; max-width: 88%; }
-          .chat-msg.user { align-self: flex-end; flex-direction: row-reverse; }
+          .chat-msg.user { align-self: flex-end; }
           .msg-avatar { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: #e2e8f0; font-size: 16px; flex-shrink: 0; }
           .user-avatar { background: #667eea20; }
           .msg-bubble { padding: 12px 16px; border-radius: 14px; font-size: 14px; line-height: 1.7; color: #1e293b; background: #f1f5f9; white-space: pre-wrap; }
@@ -861,6 +882,12 @@ function RecallPageContent() {
           <div className="progress-bar"><div className="progress-fill" style={{ width: `${(completedCount / STEP_FIELDS.length) * 100}%` }} /></div>
         </div>
       </div>
+
+      {activePromptSource ? (
+        <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / v{activePromptSource.version}
+        </div>
+      ) : null}
 
       <p className="recall-tip">💡 请在脑海中回忆今天的课堂内容，把关键词写下来。写完后点击「提交分析」让 AI 帮你总结。</p>
 

@@ -48,6 +48,102 @@ function toCsv(entries: MistakeNotebookEntry[]): string {
   return [header, ...rows].map((row) => row.map(escape).join(',')).join('\n');
 }
 
+function escapeHtml(value: string): string {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function toNotebookHtml(entries: MistakeNotebookEntry[]): string {
+  const rows = entries.map((item, index) => {
+    const userVals = item.userAnswer
+      ?.split(/\s*[,，、]\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean) || [];
+    const correctVals = item.correctAnswer
+      ?.split(/\s*[,，、]\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean) || [];
+
+    const optionsHtml = item.options?.length
+      ? `<div class="options">${item.options
+          .map((opt) => {
+            const isCorrect = correctVals.includes(opt.value);
+            const isUser = userVals.includes(opt.value);
+            const cls = isCorrect ? 'opt correct' : isUser ? 'opt wrong' : 'opt';
+            const badge = isCorrect
+              ? '<span class="badge ok">正确</span>'
+              : isUser
+                ? '<span class="badge bad">你的选择</span>'
+                : '';
+            return `<div class="${cls}">
+              <span class="opt-value">${escapeHtml(opt.value)}.</span>
+              <span>${escapeHtml(opt.label)}</span>
+              ${badge}
+            </div>`;
+          })
+          .join('')}</div>`
+      : '';
+
+    return `<article class="item">
+      <div class="item-meta">
+        <span>第 ${index + 1} 题</span>
+        <span>${escapeHtml(new Date(item.updatedAt || Date.now()).toLocaleString())}</span>
+      </div>
+      <h3>${escapeHtml(item.question)}</h3>
+      ${optionsHtml}
+      <div class="answers">
+        <div class="answer mine"><strong>我的答案：</strong>${escapeHtml(item.userAnswer || '未作答')}</div>
+        <div class="answer right"><strong>正确答案：</strong>${escapeHtml(item.correctAnswer || '未提供')}</div>
+      </div>
+      <div class="scene">场景：${escapeHtml(item.sceneTitle || item.sceneId)} · 科目：${escapeHtml(item.subject || '未分类')}</div>
+    </article>`;
+  });
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>错题本</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f8fafc; color: #0f172a; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0; font-size: 30px; }
+    .desc { margin: 8px 0 18px; color: #475569; font-size: 14px; }
+    .item { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+    .item-meta { display: flex; justify-content: space-between; color: #64748b; font-size: 12px; margin-bottom: 8px; }
+    h3 { margin: 0 0 10px; font-size: 15px; line-height: 1.7; }
+    .options { display: grid; gap: 6px; margin-bottom: 10px; }
+    .opt { border: 1px solid #dbe2ea; border-radius: 8px; padding: 8px 10px; background: #fff; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .opt-value { font-weight: 700; min-width: 18px; color: #475569; }
+    .opt.correct { border-color: #86efac; background: #f0fdf4; }
+    .opt.wrong { border-color: #fca5a5; background: #fef2f2; }
+    .badge { margin-left: auto; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
+    .badge.ok { background: #dcfce7; color: #166534; }
+    .badge.bad { background: #fee2e2; color: #991b1b; }
+    .answers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .answer { border-radius: 8px; padding: 10px; font-size: 13px; }
+    .answer.mine { background: #fee2e2; border: 1px solid #fecaca; color: #991b1b; }
+    .answer.right { background: #dcfce7; border: 1px solid #86efac; color: #14532d; }
+    .scene { margin-top: 8px; color: #64748b; font-size: 12px; }
+    @media (max-width: 720px) { .wrap { padding: 14px; } .answers { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>错题本</h1>
+    <p class="desc">导出时间：${escapeHtml(new Date().toLocaleString())} · 共 ${entries.length} 道错题</p>
+    ${rows.join('')}
+  </main>
+</body>
+</html>`;
+}
+
 export default function MistakesPage() {
   const { isLoggedIn } = useAuthGuard();
   const subscription = useSubscriptionStore((s) => s.subscription);
@@ -278,12 +374,12 @@ export default function MistakesPage() {
     }
 
     if (entries.length === 0) return;
-    const csv = toCsv(entries);
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const html = toNotebookHtml(entries);
+    const blob = new Blob(['\uFEFF' + html], { type: 'text/html;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `错题本_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `错题本_${new Date().toISOString().slice(0, 10)}.html`;
     document.body.appendChild(a);
     a.click();
     a.remove();

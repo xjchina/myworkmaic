@@ -11,7 +11,21 @@ export function ServerProvidersInit() {
   const fetchServerProviders = useSettingsStore((state) => state.fetchServerProviders);
 
   useEffect(() => {
-    fetchServerProviders();
+    void fetchServerProviders();
+
+    const onFocus = () => {
+      void fetchServerProviders();
+    };
+    window.addEventListener('focus', onFocus);
+
+    const timer = window.setInterval(() => {
+      void fetchServerProviders();
+    }, 60_000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.clearInterval(timer);
+    };
   }, [fetchServerProviders]);
 
   return null;

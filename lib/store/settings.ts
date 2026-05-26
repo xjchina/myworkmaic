@@ -997,7 +997,7 @@ export const useSettingsStore = create<SettingsState>()(
         // Fetch server-configured providers and merge into local state
         fetchServerProviders: async () => {
           try {
-            const res = await fetch('/api/server-providers');
+            const res = await fetch('/api/server-providers', { cache: 'no-store' });
             if (!res.ok) return;
             const data = (await res.json()) as {
               providers: Record<string, { models?: string[]; baseUrl?: string }>;

@@ -34,6 +34,15 @@ export interface UserMessageListItem {
   readAt: string | null;
 }
 
+export interface BroadcastAnnouncementItem {
+  title: string;
+  content: string;
+  actionUrl: string | null;
+  sender: string | null;
+  sentAt: string;
+  recipients: number;
+}
+
 function normalizePage(value: number | undefined, fallback: number) {
   if (!Number.isFinite(value) || !value) return fallback;
   return Math.max(1, Math.floor(value));
@@ -97,6 +106,54 @@ export async function createBroadcastAnnouncement(input: {
 
   await db.insert(userMessages).values(rows);
   return rows.length;
+}
+
+export async function listBroadcastAnnouncements(limit = 20): Promise<BroadcastAnnouncementItem[]> {
+  const rows = await db
+    .select({
+      title: userMessages.title,
+      content: userMessages.content,
+      actionUrl: userMessages.actionUrl,
+      metaJson: userMessages.metaJson,
+      createdAt: userMessages.createdAt,
+    })
+    .from(userMessages)
+    .where(and(eq(userMessages.category, 'activity'), isNull(userMessages.deletedAt)))
+    .orderBy(desc(userMessages.createdAt))
+    .limit(Math.min(500, Math.max(20, limit * 8)));
+
+  const grouped = new Map<string, BroadcastAnnouncementItem>();
+  for (const row of rows) {
+    const ts = row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt);
+    const sentAt = Number.isNaN(ts.getTime()) ? new Date().toISOString() : ts.toISOString();
+    const key = `${sentAt}|${row.title}|${row.content}|${row.actionUrl || ''}`;
+    if (!grouped.has(key)) {
+      let sender: string | null = null;
+      if (row.metaJson) {
+        try {
+          const meta = JSON.parse(row.metaJson) as { sender?: string; source?: string; scope?: string };
+          if (meta.sender) sender = meta.sender;
+        } catch {
+          sender = null;
+        }
+      }
+      grouped.set(key, {
+        title: row.title,
+        content: row.content,
+        actionUrl: row.actionUrl,
+        sender,
+        sentAt,
+        recipients: 1,
+      });
+    } else {
+      const current = grouped.get(key)!;
+      current.recipients += 1;
+    }
+  }
+
+  return Array.from(grouped.values())
+    .sort((a, b) => (a.sentAt < b.sentAt ? 1 : -1))
+    .slice(0, Math.max(1, limit));
 }
 
 export async function listUserMessages(input: ListUserMessagesInput) {

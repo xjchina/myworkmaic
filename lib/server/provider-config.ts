@@ -489,3 +489,11 @@ export function resolveServerWebSearchProviderId(preferredProviderId?: string): 
   if (webSearch.tavily?.apiKey) return 'tavily';
   return Object.keys(webSearch)[0];
 }
+
+/**
+ * Clear in-memory provider config cache.
+ * Call this after server-providers.yml is updated at runtime.
+ */
+export function refreshServerProviderConfigCache() {
+  _configs.clear();
+}

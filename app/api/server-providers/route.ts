@@ -11,6 +11,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ServerProviders');
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {

@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         ...extractUserText(scenes).slice(0, 30),
       ],
       scene: 'classroom-save',
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
     if (moderation.blocked) {
       return apiError(

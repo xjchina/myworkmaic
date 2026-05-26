@@ -1,5 +1,7 @@
 'use client';
 
+import { useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Sparkles } from 'lucide-react';
 import { AppShell } from '@/components/shell/app-shell';
@@ -7,6 +9,21 @@ import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 
 export default function ClassroomPage() {
   const { isLoggedIn } = useAuthGuard();
+  const searchParams = useSearchParams();
+  const iframeSrc = useMemo(() => {
+    const params = new URLSearchParams({ embedded: '1' });
+    const openSettings = searchParams.get('openSettings');
+    const reason = searchParams.get('reason');
+
+    if (openSettings === 'providers') {
+      params.set('openSettings', openSettings);
+    }
+    if (reason === 'model-required') {
+      params.set('reason', reason);
+    }
+    return `/openmaic?${params.toString()}`;
+  }, [searchParams]);
+
   if (!isLoggedIn) return null;
 
   return (
@@ -90,7 +107,7 @@ export default function ClassroomPage() {
 
       <div className="embed-section">
         <iframe
-          src="/openmaic?embedded=1"
+          src={iframeSrc}
           title="课堂生成"
           className="embed-frame"
           loading="lazy"

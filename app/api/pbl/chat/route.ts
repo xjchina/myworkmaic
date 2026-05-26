@@ -1,4 +1,4 @@
-/**
+﻿/**
  * PBL Runtime Chat API
  *
  * Handles @mention routing during PBL runtime.
@@ -13,6 +13,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
 import { getAuthUserId } from '@/lib/server/auth';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
+
 const log = createLogger('PBL Chat');
 
 interface PBLChatRequest {
@@ -37,17 +38,25 @@ export async function POST(req: NextRequest) {
     const { message, agent, currentIssue, recentMessages, userRole, agentType } = body;
     agentName = agent?.name;
     resolvedAgentType = agentType;
+
     const moderation = await checkCombinedCompliance({
       inputs: [message],
       scene: 'pbl-chat',
       userId,
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      // Input moderation should use the generic text moderation service.
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
+
     if (moderation.blocked) {
+      const moderationMessage =
+        moderation.suggestion === 'unknown'
+          ? moderation.reason || '内容审核服务暂不可用，请稍后重试。'
+          : '输入内容未通过审核，请调整后重试。';
+
       return apiError(
         'CONTENT_SENSITIVE',
         400,
-        '输入内容未通过审核，请调整后重试。',
+        moderationMessage,
         moderation.labels.length ? `命中标签：${moderation.labels.join(', ')}` : undefined,
       );
     }

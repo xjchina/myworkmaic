@@ -1,0 +1,10 @@
+▲ Next.js 16.1.2 (Turbopack)
+- Local:         http://localhost:3111
+- Network:       http://192.168.2.11:3111
+- Environments: .env.local
+- Experiments (use with caution):
+  · proxyClientMaxBodySize: "200mb"
+
+✓ Starting...
+  Suggestion: If you intended to restart next dev, terminate the other process, and then try again.
+[?25h

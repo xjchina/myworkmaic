@@ -68,7 +68,9 @@ export async function POST(req: NextRequest) {
       inputs: userMessages,
       scene: 'chat',
       userId,
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      // Input moderation should use the generic text moderation service.
+      // `llm_response_moderation` is intended for model output checks.
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
     if (moderation.blocked) {
       return apiError(

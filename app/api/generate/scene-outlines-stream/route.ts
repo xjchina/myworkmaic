@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
       ],
       scene: 'scene-outlines-stream',
       userId,
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
     if (moderation.blocked) {
       return apiError(

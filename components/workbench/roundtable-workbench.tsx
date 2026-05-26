@@ -1,25 +1,24 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus,
   Send,
   Loader2,
-  Mic,
   MessageSquare,
   Trash2,
-  Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AvatarDisplay } from '@/components/ui/avatar-display';
+import { SpeechButton } from '@/components/audio/speech-button';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { cn } from '@/lib/utils';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useSubscriptionStore } from '@/lib/store/subscription';
-import { useAudioRecorder } from '@/lib/hooks/use-audio-recorder';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
 import type { PBLAgent } from '@/lib/pbl/types';
 
@@ -47,6 +46,25 @@ interface DebateSession {
 
 const DEFAULT_TEACHER_AVATAR = '/avatars/teacher.png';
 const DEFAULT_USER_AVATAR = '/avatars/user.png';
+
+function hasConfiguredLanguageModel(): boolean {
+  const { providerId, modelId, providersConfig } = useSettingsStore.getState();
+  if (!providerId || !modelId) return false;
+
+  const provider = providersConfig?.[providerId];
+  if (!provider) return false;
+  if (!provider.models.some((model) => model.id === modelId)) return false;
+
+  const hasEndpoint = !!(
+    provider.baseUrl?.trim() ||
+    provider.defaultBaseUrl?.trim() ||
+    provider.serverBaseUrl?.trim()
+  );
+  if (!hasEndpoint) return false;
+
+  if (!provider.requiresApiKey) return true;
+  return !!(provider.apiKey?.trim() || provider.isServerConfigured);
+}
 
 // 閳光偓閳光偓 API helper 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
@@ -332,6 +350,7 @@ function SessionItem({
 // 閳光偓閳光偓 Main Component 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 export function RoundtableWorkbench() {
+  const router = useRouter();
   const selectedAgentIds = useSettingsStore((s) => s.selectedAgentIds);
   const agentsMap = useAgentRegistry((s) => s.agents);
   const subscription = useSubscriptionStore((s) => s.subscription);
@@ -350,18 +369,6 @@ export function RoundtableWorkbench() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const { enqueueSpeak, stop: stopSpeech } = useSpeech();
-
-  const { isRecording, isProcessing, startRecording, stopRecording, cancelRecording } = useAudioRecorder({
-    onTranscription: (text) => {
-      const cleaned = text.trim();
-      if (!cleaned) return;
-      setInputValue((prev) => (prev ? prev + ' ' + cleaned : cleaned));
-      setTimeout(() => inputRef.current?.focus(), 0);
-    },
-    onError: (msg) => {
-      setError(msg || '璇煶璇嗗埆澶辫触锛岃閲嶈瘯');
-    },
-  });
 
   useEffect(() => {
     void fetchSubscription();
@@ -403,12 +410,10 @@ export function RoundtableWorkbench() {
   // Stop speech on session switch or unmount
   useEffect(() => {
     stopSpeech();
-    cancelRecording();
     return () => {
       stopSpeech();
-      cancelRecording();
     };
-  }, [activeSessionId, stopSpeech, cancelRecording]);
+  }, [activeSessionId, stopSpeech]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId) || null;
 
@@ -516,7 +521,12 @@ export function RoundtableWorkbench() {
     if (!teacher || students.length === 0) return;
     const input = inputValue.trim();
     if (!input || isRunning) return;
-    if (isRecording) stopRecording();
+
+    if (!hasConfiguredLanguageModel()) {
+      setError('请先设置模型');
+      router.push('/classroom?openSettings=providers&reason=model-required');
+      return;
+    }
 
     setError(null);
     setIsRunning(true);
@@ -575,11 +585,17 @@ export function RoundtableWorkbench() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '讨论生成失败');
+      const message = err instanceof Error ? err.message : '讨论生成失败';
+      if (/api key is required/i.test(message)) {
+        setError('请先设置模型');
+        router.push('/classroom?openSettings=providers&reason=model-required');
+        return;
+      }
+      setError(message);
     } finally {
       setIsRunning(false);
     }
-  }, [teacher, students, inputValue, isRunning, isRecording, stopRecording, activeSession, appendMessage, streamText, autoSpeak, enqueueSpeak]);
+  }, [teacher, students, inputValue, isRunning, activeSession, appendMessage, streamText, autoSpeak, enqueueSpeak, router]);
 
   // Keyboard: Enter to send (Shift+Enter for newline)
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -724,36 +740,23 @@ export function RoundtableWorkbench() {
               onKeyDown={handleKeyDown}
               placeholder="输入问题，按 Enter 开始讨论..."
               rows={1}
-              disabled={isRunning || isProcessing}
+              disabled={isRunning}
               className="rt-textarea"
             />
-            <button
-              type="button"
-              className={cn('rt-voice-btn', (isRecording || isProcessing) && 'active')}
-              disabled={isRunning || !teacher}
-              onClick={() => {
-                if (isProcessing) return;
+            <SpeechButton
+              size="md"
+              disabled={isRunning}
+              onTranscription={(text) => {
+                const cleaned = text.trim();
+                if (!cleaned) return;
                 setError(null);
-                if (isRecording) {
-                  stopRecording();
-                } else {
-                  void startRecording();
-                }
+                setInputValue((prev) => (prev ? `${prev} ${cleaned}` : cleaned));
+                setTimeout(() => inputRef.current?.focus(), 0);
               }}
-              title={isRecording ? '停止录音' : '语音输入'}
-            >
-              {isProcessing ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : isRecording ? (
-                <Square className="size-3 fill-current" />
-              ) : (
-                <Mic className="size-4" />
-              )}
-              {isRecording ? '录音中' : '语音'}
-            </button>
+            />
             <Button
               onClick={startDebate}
-              disabled={isRunning || isProcessing || !inputValue.trim() || !teacher}
+              disabled={isRunning || !inputValue.trim() || !teacher}
               className={cn(
                 'shrink-0 h-9 rounded-lg gap-1.5 px-3',
                 !isRunning && inputValue.trim() && teacher

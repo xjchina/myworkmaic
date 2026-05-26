@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     const moderation = await checkCombinedCompliance({
       inputs: [body.prompt],
       scene: 'video-generation',
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
     if (moderation.blocked) {
       return apiError(

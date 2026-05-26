@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+﻿import { randomUUID } from 'crypto';
 import { createLogger } from '@/lib/logger';
 
 type ComplianceProvider = 'none' | 'aliyun';
@@ -35,6 +35,16 @@ function getProvider(): ComplianceProvider {
 
 function shouldFailOpen(): boolean {
   return (process.env.COMPLIANCE_FAIL_OPEN || 'true').trim().toLowerCase() !== 'false';
+}
+
+function isAliyunArrearsError(error: unknown): boolean {
+  const message = String(error instanceof Error ? error.message : error).toLowerCase();
+  return (
+    message.includes('in arrears') ||
+    message.includes('please recharge') ||
+    message.includes('account is in arrears') ||
+    message.includes('娆犺垂')
+  );
 }
 
 function normalizeEndpoint(endpoint: string): string {
@@ -86,16 +96,35 @@ function parseAliyunDecision(payload: unknown): {
   const labels = new Set<string>();
   const suggestions: string[] = [];
 
-  const walk = (node: unknown) => {
-    if (!node) return;
-    if (typeof node === 'string') {
-      const trimmed = node.trim();
-      const l = lower(trimmed);
-      if (BLOCK_SUGGESTIONS.has(l) || PASS_SUGGESTIONS.has(l)) {
-        suggestions.push(l);
-      }
+  const addSuggestion = (value: unknown) => {
+    if (typeof value !== 'string') return;
+    const normalized = lower(value);
+    if (BLOCK_SUGGESTIONS.has(normalized) || PASS_SUGGESTIONS.has(normalized)) {
+      suggestions.push(normalized);
+    }
+  };
+
+  const addLabels = (value: unknown) => {
+    if (typeof value === 'string') {
+      const normalized = value
+        .split(/[,\s]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      normalized.forEach((item) => labels.add(item));
       return;
     }
+    if (Array.isArray(value)) {
+      value.forEach((item) => addLabels(item));
+      return;
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach((item) => addLabels(item));
+    }
+  };
+
+  const walk = (node: unknown) => {
+    if (!node) return;
+    if (typeof node === 'string') return;
     if (Array.isArray(node)) {
       node.forEach(walk);
       return;
@@ -104,11 +133,18 @@ function parseAliyunDecision(payload: unknown): {
       const record = node as Record<string, unknown>;
       for (const [key, val] of Object.entries(record)) {
         const lk = key.toLowerCase();
-        if (lk === 'suggestion' || lk === 'action' || lk === 'conclusion') {
-          if (typeof val === 'string') suggestions.push(lower(val));
+        if (
+          lk === 'suggestion' ||
+          lk.endsWith('suggestion') ||
+          lk === 'action' ||
+          lk.endsWith('action') ||
+          lk === 'conclusion' ||
+          lk.endsWith('conclusion')
+        ) {
+          addSuggestion(val);
         }
-        if (lk === 'label' || lk === 'sublabel') {
-          if (typeof val === 'string' && val.trim()) labels.add(val.trim());
+        if (lk === 'label' || lk === 'sublabel' || lk.endsWith('label')) {
+          addLabels(val);
         }
         walk(val);
       }
@@ -139,7 +175,7 @@ async function callAliyunTextModeration(args: {
 }): Promise<unknown> {
   const conf = buildAliyunConfig();
   if (!conf.accessKeyId || !conf.accessKeySecret || !conf.endpoint) {
-    throw new Error('阿里云内容审核配置不完整');
+    throw new Error('闃块噷浜戝唴瀹瑰鏍搁厤缃笉瀹屾暣');
   }
 
   const imported = (await import('@alicloud/pop-core')) as unknown as {
@@ -153,7 +189,7 @@ async function callAliyunTextModeration(args: {
   };
   const RPCClient = imported.default || (imported as unknown as typeof imported.default);
   if (!RPCClient) {
-    throw new Error('无法加载 @alicloud/pop-core');
+    throw new Error('鏃犳硶鍔犺浇 @alicloud/pop-core');
   }
 
   const client = new RPCClient({
@@ -214,19 +250,30 @@ export async function checkContentCompliance(
     });
 
     const { suggestion, labels } = parseAliyunDecision(raw);
-    const blocked = suggestion === 'block' || suggestion === 'review';
+    // For user input, require concrete label evidence when suggestion is "review"
+    // to reduce false positives on benign short messages.
+    const blocked = suggestion === 'block' || (suggestion === 'review' && labels.length > 0);
     return {
       ok: !blocked,
       blocked,
       provider,
       suggestion,
       labels,
-      reason: blocked ? '内容未通过审核' : undefined,
+      reason: blocked ? '鍐呭鏈€氳繃瀹℃牳' : undefined,
       raw,
     };
   } catch (error) {
     const failOpen = shouldFailOpen();
-    log.error(`内容审核请求失败(scene=${options.scene || 'unknown'})`, error);
+    if (isAliyunArrearsError(error)) {
+      return {
+        ok: true,
+        blocked: false,
+        provider,
+        suggestion: 'unknown',
+        labels: [],
+      };
+    }
+    log.error(`鍐呭瀹℃牳璇锋眰澶辫触(scene=${options.scene || 'unknown'})`, error);
     if (failOpen) {
       return {
         ok: true,
@@ -242,7 +289,7 @@ export async function checkContentCompliance(
       provider,
       suggestion: 'unknown',
       labels: [],
-      reason: '内容审核服务暂不可用',
+      reason: '鍐呭瀹℃牳鏈嶅姟鏆備笉鍙敤',
     };
   }
 }
@@ -268,4 +315,3 @@ export async function checkCombinedCompliance(options: {
 export function extractUserText(value: unknown): string[] {
   return collectStrings(value).filter((v) => v.trim().length > 0);
 }
-

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense, useRef } from 'react';
+import { useEffect, useState, Suspense, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, Sparkles, AlertCircle, AlertTriangle, ArrowLeft, Bot } from 'lucide-react';
@@ -65,6 +65,18 @@ function GenerationPreviewContent() {
     }>
   >([]);
   const agentRevealResolveRef = useRef<(() => void) | null>(null);
+
+  const getBackTarget = useCallback(() => {
+    try {
+      if (window.self !== window.top) {
+        return '/openmaic?embedded=1';
+      }
+    } catch {
+      // Cross-origin access can throw; if so we're effectively in an iframe context.
+      return '/openmaic?embedded=1';
+    }
+    return '/openmaic';
+  }, []);
 
   // Compute active steps based on session state
   const activeSteps = getActiveSteps(session);
@@ -871,7 +883,7 @@ function GenerationPreviewContent() {
   const goBackToHome = () => {
     abortControllerRef.current?.abort();
     sessionStorage.removeItem('generationSession');
-    router.push('/');
+    router.push(getBackTarget());
   };
 
   // Still loading session from sessionStorage
@@ -894,7 +906,7 @@ function GenerationPreviewContent() {
             <AlertCircle className="size-12 text-muted-foreground mx-auto" />
             <h2 className="text-xl font-semibold">{t('generation.sessionNotFound')}</h2>
             <p className="text-sm text-muted-foreground">{t('generation.sessionNotFoundDesc')}</p>
-            <Button onClick={() => router.push('/')} className="w-full">
+            <Button onClick={() => router.push(getBackTarget())} className="w-full">
               <ArrowLeft className="size-4 mr-2" />
               {t('generation.backToHome')}
             </Button>

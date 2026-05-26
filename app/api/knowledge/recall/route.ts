@@ -5,6 +5,7 @@ import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 import { callLLM } from '@/lib/ai/llm';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
+import { resolveKnowledgeRecallSystemPrompt } from '@/lib/server/knowledge-prompt-runtime';
 
 type RecallSteps = {
   step1?: string;
@@ -95,15 +96,16 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       chapter?: string;
       subject?: string;
+      studentLevel?: string;
       steps?: RecallSteps;
       currentStep?: number;
       sessionKey?: string;
       dialogueHistory?: DialogueMessage[];
     };
 
-    // 关键约束：知识宇宙只使用用户在前端传入的模型配置，不使用服务端兜底。
+    // 优先使用前端传入的模型配置；若未传入可用 key，则允许读取服务端已配置同 provider 的 key。
     const { model, thinkingConfig } = await resolveModelFromRequest(request, body, {
-      allowServerFallback: false,
+      allowServerFallback: true,
     });
 
     const chapter = asString(body.chapter).trim();
@@ -137,7 +139,7 @@ export async function POST(request: NextRequest) {
       ],
       scene: 'knowledge-recall',
       userId,
-      service: process.env.ALIYUN_GREEN_AI_TEXT_SERVICE?.trim() || undefined,
+      service: process.env.ALIYUN_GREEN_TEXT_SERVICE?.trim() || undefined,
     });
 
     if (moderation.blocked) {
@@ -170,7 +172,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const systemPrompt = buildSystemPrompt(subject, chapter);
+    const studentLevel = asString(body.studentLevel).trim();
+    const { systemPrompt, source } = await resolveKnowledgeRecallSystemPrompt({
+      subject,
+      chapter,
+      studentLevel: studentLevel || undefined,
+      mode: isDialogMode ? 'dialog' : 'quick',
+    });
 
     if (isDialogMode) {
       const stepPrompt = [
@@ -198,8 +206,12 @@ export async function POST(request: NextRequest) {
       const raw = asString(result.text);
       const clean = stripStepTag(raw);
       const step = extractStepNumber(raw) ?? extractStepNumber(clean);
-      const isFinal = /^\s*\[SUMMARY\]/i.test(raw) || looksLikeFinalSummary(clean);
-      return Response.json({ content: clean, step, isFinal });
+      const userTurnCount = dialogueHistory.filter((item) => item?.role === 'user').length;
+      const summaryTagged = /^\s*\[SUMMARY\]/i.test(raw);
+      // Guardrail: do not finish too early even if model outputs [SUMMARY] unexpectedly.
+      const canFinalize = currentStep >= 5 && userTurnCount >= 5;
+      const isFinal = summaryTagged && canFinalize;
+      return Response.json({ content: clean, step, isFinal, promptSource: source });
     }
 
     const stepLines = [
@@ -229,7 +241,7 @@ export async function POST(request: NextRequest) {
       thinkingConfig,
     );
 
-    return Response.json({ content: asString(result.text) || '（无响应）' });
+    return Response.json({ content: asString(result.text) || '（无响应）', promptSource: source });
   } catch (err) {
     console.error('Knowledge recall error:', err);
     const message = err instanceof Error ? err.message : '';
@@ -249,4 +261,3 @@ export async function POST(request: NextRequest) {
     return apiError('INTERNAL_ERROR', 500, '服务器内部错误，请稍后重试。');
   }
 }
-
