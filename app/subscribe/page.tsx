@@ -19,6 +19,9 @@ import {
 import styles from './subscribe.module.css';
 
 const PLAN_ORDER: SubscriptionType[] = ['free', 'sub', 'vip'];
+const PLAN_FEATURE_KEYS = (Object.keys(PERMISSION_LABELS) as Array<keyof typeof PERMISSION_LABELS>).filter(
+  (key) => key !== 'knowledgeSteps',
+);
 
 function PlanCard({
   plan,
@@ -62,7 +65,7 @@ function PlanCard({
       </div>
 
       <ul className={styles.featureList}>
-        {(Object.keys(PERMISSION_LABELS) as Array<keyof typeof PERMISSION_LABELS>).map((key) => (
+        {PLAN_FEATURE_KEYS.map((key) => (
           <li key={key} className={`${styles.featureItem} ${plan !== 'free' ? styles.featureItemPremium : ''}`}>
             <Check className={styles.featureCheck} style={{ color: plan === 'free' ? '#94a3b8' : meta.color }} />
             <span className={styles.featureName}>{PERMISSION_LABELS[key].name}</span>
