@@ -130,7 +130,9 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
         : 'zh-CN';
 
       recognition.lang = resolvedLanguage;
-      recognition.continuous = true;
+      // Short-form inputs are more reliable with non-continuous recognition in Chrome.
+      // Continuous mode can emit a premature "no-speech" error before the user finishes.
+      recognition.continuous = false;
       recognition.interimResults = true;
 
       nativeFinalTranscriptRef.current = '';
@@ -167,11 +169,22 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
           }
         }
         nativeInterimTranscriptRef.current = interim;
+
+        const finalTranscript = nativeFinalTranscriptRef.current.trim();
+        if (finalTranscript) {
+          onTranscription?.(finalTranscript);
+          nativeFinalTranscriptRef.current = '';
+          nativeInterimTranscriptRef.current = '';
+        }
       };
 
       recognition.onerror = (event: { error: string }) => {
-        log.error('Speech recognition error:', event.error);
-        let errorMessage = '语音识别失败';
+        if (event.error === 'no-speech') {
+          log.warn('Speech recognition ended without detected speech');
+        } else {
+          log.error('Speech recognition error:', event.error);
+        }
+        let errorMessage = '\u8bed\u97f3\u8bc6\u522b\u5931\u8d25';
 
         switch (event.error) {
           case 'aborted':
@@ -180,22 +193,22 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}) {
             nativeInterimTranscriptRef.current = '';
             return;
           case 'no-speech':
-            errorMessage = '未检测到语音输入';
+            errorMessage = '\u6ca1\u6709\u8bc6\u522b\u5230\u58f0\u97f3\uff0c\u8bf7\u9760\u8fd1\u9ea6\u514b\u98ce\u540e\u518d\u8bd5';
             break;
           case 'audio-capture':
-            errorMessage = '无法访问麦克风';
+            errorMessage = '\u65e0\u6cd5\u8bbf\u95ee\u9ea6\u514b\u98ce\uff0c\u8bf7\u68c0\u67e5\u8f93\u5165\u8bbe\u5907';
             break;
           case 'not-allowed':
-            errorMessage = '麦克风权限被拒绝';
+            errorMessage = '\u9ea6\u514b\u98ce\u6743\u9650\u88ab\u62d2\u7edd\uff0c\u8bf7\u5728\u6d4f\u89c8\u5668\u5730\u5740\u680f\u5141\u8bb8\u9ea6\u514b\u98ce';
             break;
           case 'network':
-            errorMessage = '语音识别网络错误';
+            errorMessage = '\u8bed\u97f3\u8bc6\u522b\u7f51\u7edc\u9519\u8bef';
             break;
           case 'language-not-supported':
-            errorMessage = '当前浏览器不支持该语音语言，请尝试 Chrome';
+            errorMessage = '\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u8be5\u8bed\u97f3\u8bed\u8a00\uff0c\u8bf7\u5c1d\u8bd5 Chrome';
             break;
           default:
-            errorMessage = `语音识别错误: ${event.error}`;
+            errorMessage = `\u8bed\u97f3\u8bc6\u522b\u9519\u8bef: ${event.error}`;
         }
 
         onError?.(errorMessage);

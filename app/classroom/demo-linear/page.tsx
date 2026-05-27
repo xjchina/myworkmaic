@@ -9,12 +9,11 @@ import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 import { useSceneGenerator } from '@/lib/hooks/use-scene-generator';
 import { useSettingsStore } from '@/lib/store/settings';
-import { SETS_STAGE, SETS_SCENES } from '@/lib/data/demo-data-sets';
+import { LINEAR_STAGE, LINEAR_SCENES, LINEAR_STAGE_ID } from '@/lib/data/demo-data-linear';
 import { createLogger } from '@/lib/logger';
 import { MediaStageProvider } from '@/lib/contexts/media-stage-context';
 
 const log = createLogger('DemoLinearClassroom');
-const DEMO_LINEAR_STAGE_ID = 'builtin-demo-linear-equation';
 
 export default function DemoLinearClassroomPage() {
   const { isLoggedIn } = useAuthGuard();
@@ -33,16 +32,10 @@ export default function DemoLinearClassroomPage() {
     initializedRef.current = true;
 
     const stage = {
-      ...SETS_STAGE,
-      id: DEMO_LINEAR_STAGE_ID,
-      name: '什么是一元一次方程',
-      description: '内置示例课堂，随系统发布，所有用户可见。',
+      ...LINEAR_STAGE,
       updatedAt: Date.now(),
     };
-    const scenes = SETS_SCENES.map((scene) => ({
-      ...scene,
-      stageId: DEMO_LINEAR_STAGE_ID,
-    }));
+    const scenes = LINEAR_SCENES;
 
     setStage(stage);
     setScenes(scenes);
@@ -69,7 +62,7 @@ export default function DemoLinearClassroomPage() {
 
   return (
     <ThemeProvider>
-      <MediaStageProvider value={DEMO_LINEAR_STAGE_ID}>
+      <MediaStageProvider value={LINEAR_STAGE_ID}>
         <div className="h-screen flex flex-col overflow-hidden">
           {ready ? (
             <Stage />
