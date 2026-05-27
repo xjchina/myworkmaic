@@ -136,8 +136,10 @@ function RedeemCodePanel() {
 function InviteSharePanel() {
   const shareStats = useSubscriptionStore((s) => s.shareStats);
   const fetchShareStats = useSubscriptionStore((s) => s.fetchShareStats);
+  const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
   const generateInviteLink = useSubscriptionStore((s) => s.generateInviteLink);
   const [copied, setCopied] = useState(false);
+  const [claiming, setClaiming] = useState(false);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -159,12 +161,39 @@ function InviteSharePanel() {
     toast.error(result.message || '生成失败');
   }, [generateInviteLink]);
 
+  const handleClaimRewards = useCallback(async () => {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      const res = await fetch('/api/share/claim-rewards', { method: 'POST' });
+      const data = await res.json().catch(() => ({} as { success?: boolean; message?: string; data?: { claimedCount?: number; rewardDays?: number } }));
+      if (!res.ok || !data.success) {
+        toast.error(data.message || '领取失败，请稍后重试');
+        return;
+      }
+
+      const claimedCount = data.data?.claimedCount ?? 0;
+      const rewardDays = data.data?.rewardDays ?? 0;
+      if (claimedCount > 0) {
+        toast.success(`已领取 ${rewardDays} 天会员奖励`);
+      } else {
+        toast.info('暂无可领取奖励');
+      }
+
+      await Promise.all([fetchShareStats(), fetchSubscription()]);
+    } catch {
+      toast.error('网络异常，领取失败，请稍后重试');
+    } finally {
+      setClaiming(false);
+    }
+  }, [claiming, fetchShareStats, fetchSubscription]);
+
   if (!shareStats) return null;
 
   return (
     <div className={styles.invitePanel}>
       <h4 className={styles.inviteTitle}>邀请好友</h4>
-      <p className={styles.inviteDesc}>好友注册并开通会员后，你可获得 30 天订阅时长奖励</p>
+      <p className={styles.inviteDesc}>好友通过你的链接注册成功后，你可领取 30 天会员奖励。</p>
       <div className={styles.inviteStats}>
         <div className={styles.inviteStatItem}>
           <span className={styles.inviteStatValue}>{shareStats.totalInvites}</span>
@@ -173,18 +202,26 @@ function InviteSharePanel() {
         <div className={styles.inviteStatDivider} />
         <div className={styles.inviteStatItem}>
           <span className={styles.inviteStatValue}>{shareStats.successfulInvites}</span>
-          <span className={styles.inviteStatLabel}>成功奖励</span>
+          <span className={styles.inviteStatLabel}>已领取</span>
         </div>
         <div className={styles.inviteStatDivider} />
         <div className={styles.inviteStatItem}>
           <span className={styles.inviteStatValue}>{shareStats.pendingRewards}</span>
-          <span className={styles.inviteStatLabel}>待生效</span>
+          <span className={styles.inviteStatLabel}>待领取</span>
         </div>
       </div>
-      <button className={styles.inviteButton} onClick={handleCopyLink}>
-        <Copy className="size-4" />
-        {copied ? '已复制' : '复制邀请链接'}
-      </button>
+      <div className={styles.inviteActions}>
+        {shareStats.pendingRewards > 0 ? (
+          <button className={styles.inviteClaimButton} onClick={handleClaimRewards} disabled={claiming}>
+            {claiming ? <Loader2 className="size-4 animate-spin" /> : <Gift className="size-4" />}
+            领取会员奖励
+          </button>
+        ) : null}
+        <button className={styles.inviteButton} onClick={handleCopyLink}>
+          <Copy className="size-4" />
+          {copied ? '已复制' : '复制邀请链接'}
+        </button>
+      </div>
     </div>
   );
 }

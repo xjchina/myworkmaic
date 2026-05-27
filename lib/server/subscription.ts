@@ -567,7 +567,7 @@ export async function ensureInviteCode(userId: string): Promise<string> {
   return code;
 }
 
-/** Grant invite reward (30-day VIP extension) to inviter when invitee subscribes */
+/** Grant invite reward (30-day subscription extension) to inviter. */
 async function grantInviteReward(inviterId: string, inviteeId: string): Promise<void> {
   // Only grant once per pair
   const existing = await db
@@ -610,6 +610,48 @@ async function grantInviteReward(inviterId: string, inviteeId: string): Promise<
   });
 }
 
+/** Claim all unclaimed invite rewards for users who registered through the inviter's link. */
+export async function claimInviteRewards(userId: string): Promise<{
+  claimedCount: number;
+  rewardDays: number;
+  expiresAt: string | null;
+}> {
+  const inviterRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const inviter = inviterRows[0];
+  if (!inviter) {
+    return { claimedCount: 0, rewardDays: 0, expiresAt: null };
+  }
+
+  const inviteeRows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.invitedBy, userId));
+
+  const rewardRows = await db
+    .select({ inviteeId: shareRewards.inviteeId })
+    .from(shareRewards)
+    .where(eq(shareRewards.inviterId, userId));
+
+  const rewardedInviteeIds = new Set(rewardRows.map((row) => row.inviteeId));
+  const unclaimedInvitees = inviteeRows.filter((row) => !rewardedInviteeIds.has(row.id));
+
+  for (const invitee of unclaimedInvitees) {
+    await grantInviteReward(userId, invitee.id);
+  }
+
+  const latestRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  const latestUser = latestRows[0];
+  const claimedCount = unclaimedInvitees.length;
+
+  return {
+    claimedCount,
+    rewardDays: claimedCount * 30,
+    expiresAt: latestUser?.subscriptionExpiresAt
+      ? latestUser.subscriptionExpiresAt.toISOString().slice(0, 10)
+      : null,
+  };
+}
+
 /** Get share stats for a user */
 export async function getShareStats(userId: string) {
   const userRows = await db.select().from(users).where(eq(users.id, userId)).limit(1);
@@ -626,9 +668,10 @@ export async function getShareStats(userId: string) {
   // Count total invitees (users who used this invite code)
   const inviteeRows = await db.select().from(users).where(eq(users.invitedBy, userId));
   const totalInvites = inviteeRows.length;
+  const rewardedInviteeIds = new Set(rewardRows.map((r) => r.inviteeId));
   const successfulInvites = rewardRows.filter((r) => r.status === 'granted').length;
   const totalRewards = rewardRows.filter((r) => r.status === 'granted').length;
-  const pendingRewards = rewardRows.filter((r) => r.status === 'pending').length;
+  const pendingRewards = inviteeRows.filter((r) => !rewardedInviteeIds.has(r.id)).length;
 
   return {
     inviteCode,

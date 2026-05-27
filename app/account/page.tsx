@@ -75,12 +75,13 @@ function MembershipCard() {
       )}
 
       <div className={styles.permSummary}>
-        <span title={`每日教案课堂：${subType === 'vip' ? '不限' : `${subscription?.permissions?.classroomDaily ?? 3} 次`}`}>
-          教案 {subType === 'vip' ? '∞' : subscription?.permissions?.classroomDaily ?? 3}
+        <span className={styles.permLabel}>每日额度</span>
+        <span title={`每日教案课堂额度：${subType === 'vip' ? '不限' : `${subscription?.permissions?.classroomDaily ?? 3} 次`}`}>
+          教案 {subType === 'vip' ? '不限' : `${subscription?.permissions?.classroomDaily ?? 3} 次`}
         </span>
         <span className={styles.permDivider} />
-        <span title={`每日互动练习：${subType === 'vip' ? '不限' : `${subscription?.permissions?.exerciseDaily ?? 5} 题`}`}>
-          练习 {subType === 'vip' ? '∞' : subscription?.permissions?.exerciseDaily ?? 5}
+        <span title={`每日互动练习额度：${subType === 'vip' ? '不限' : `${subscription?.permissions?.exerciseDaily ?? 5} 题`}`}>
+          练习 {subType === 'vip' ? '不限' : `${subscription?.permissions?.exerciseDaily ?? 5} 题`}
         </span>
       </div>
     </div>

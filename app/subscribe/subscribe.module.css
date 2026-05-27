@@ -402,7 +402,13 @@
   background: #e2e8f0;
 }
 
-.inviteButton {
+.inviteActions {
+  display: grid;
+  gap: 10px;
+}
+
+.inviteButton,
+.inviteClaimButton {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -419,9 +425,23 @@
   justify-content: center;
 }
 
-.inviteButton:hover {
+.inviteClaimButton {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+.inviteButton:hover,
+.inviteClaimButton:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(79,70,229,0.3);
+}
+
+.inviteClaimButton:hover:not(:disabled) {
+  box-shadow: 0 4px 12px rgba(217,119,6,0.28);
+}
+
+.inviteClaimButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 /* ─── FAQ Section ───────────────────────────────────── */
