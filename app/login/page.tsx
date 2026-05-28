@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useSessionStore } from '@/lib/store/session';
-import { Eye, EyeOff, MessageCircle, Phone, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, MessageCircle, Phone, ShieldCheck, Wrench } from 'lucide-react';
 
 type LoginMethod = 'code' | 'password';
 
@@ -196,6 +196,11 @@ function LoginPageContent() {
   return (
     <main className="auth-page">
       <div className="auth-center-card">
+        <a className="ops-entry" href="/ops/login" aria-label="进入管理员后台登录">
+          <Wrench size={18} strokeWidth={2.2} />
+          <span>后台</span>
+        </a>
+
         <section className="brand-pane">
           <div className="brand-badge">纸忆</div>
           <h1>白纸回忆梳理法</h1>
@@ -327,14 +332,25 @@ function LoginPageContent() {
 
       <style jsx>{`
         .auth-page {
-          min-height: calc(100dvh - 24px);
+          width: 100%;
+          min-height: 100vh;
+          min-height: 100dvh;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 26px;
           background: linear-gradient(180deg, #e7e3f3 0%, #e2dff0 100%);
+          box-sizing: border-box;
+          overflow-x: hidden;
+        }
+        :global(html),
+        :global(body) {
+          margin: 0;
+          min-height: 100%;
+          background: #e2dff0;
         }
         .auth-center-card {
+          position: relative;
           width: min(1040px, 100%);
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -343,6 +359,47 @@ function LoginPageContent() {
           border-radius: 26px;
           box-shadow: 0 18px 40px rgba(108, 91, 164, 0.14);
           overflow: hidden;
+        }
+        .ops-entry {
+          position: absolute;
+          top: 18px;
+          right: 18px;
+          z-index: 3;
+          width: 44px;
+          height: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          border: 1px solid #ece8f7;
+          border-radius: 14px;
+          color: #8d86ba;
+          background: rgba(255, 255, 255, 0.78);
+          text-decoration: none;
+          box-shadow: 0 8px 20px rgba(108, 91, 164, 0.08);
+          backdrop-filter: blur(10px);
+          transition: width 0.2s ease, color 0.2s ease, border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+        }
+        .ops-entry span {
+          max-width: 0;
+          opacity: 0;
+          overflow: hidden;
+          white-space: nowrap;
+          color: #6258d6;
+          font-size: 13px;
+          font-weight: 800;
+          transition: max-width 0.2s ease, opacity 0.2s ease;
+        }
+        .ops-entry:hover {
+          width: 82px;
+          color: #6258d6;
+          border-color: #cfc8ff;
+          background: #ffffff;
+          transform: translateY(-1px);
+        }
+        .ops-entry:hover span {
+          max-width: 34px;
+          opacity: 1;
         }
         .brand-pane {
           padding: 38px 48px 32px;
@@ -688,6 +745,19 @@ function LoginPageContent() {
         @media (max-width: 980px) {
           .auth-center-card {
             grid-template-columns: 1fr;
+          }
+          .ops-entry {
+            top: 14px;
+            right: 14px;
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+          }
+          .ops-entry:hover {
+            width: 40px;
+          }
+          .ops-entry span {
+            display: none;
           }
           .brand-pane {
             border-right: none;

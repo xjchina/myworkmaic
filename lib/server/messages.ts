@@ -1,5 +1,5 @@
 ﻿import { randomUUID } from 'crypto';
-import { and, count, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { userMessages, users } from '@/lib/db/schema';
 
@@ -18,14 +18,11 @@ export interface ListUserMessagesInput {
   userId: string;
   page?: number;
   pageSize?: number;
-  category?: MessageCategory | 'all';
-  box?: 'all' | 'announcement' | 'personal';
   unreadOnly?: boolean;
 }
 
 export interface UserMessageListItem {
   id: string;
-  category: MessageCategory;
   title: string;
   content: string;
   actionUrl: string | null;
@@ -161,14 +158,6 @@ export async function listUserMessages(input: ListUserMessagesInput) {
   const pageSize = normalizePageSize(input.pageSize, 20);
 
   const conditions = [eq(userMessages.userId, input.userId), isNull(userMessages.deletedAt)];
-  if (input.category && input.category !== 'all') {
-    conditions.push(eq(userMessages.category, input.category));
-  }
-  if (input.box === 'announcement') {
-    conditions.push(eq(userMessages.category, 'activity'));
-  } else if (input.box === 'personal') {
-    conditions.push(ne(userMessages.category, 'activity'));
-  }
   if (input.unreadOnly) {
     conditions.push(eq(userMessages.isRead, false));
   }
@@ -179,7 +168,6 @@ export async function listUserMessages(input: ListUserMessagesInput) {
     db
       .select({
         id: userMessages.id,
-        category: userMessages.category,
         title: userMessages.title,
         content: userMessages.content,
         actionUrl: userMessages.actionUrl,
@@ -204,7 +192,6 @@ export async function listUserMessages(input: ListUserMessagesInput) {
     total: Number(totalRows[0]?.total ?? 0),
     items: rows.map((row) => ({
       id: row.id,
-      category: row.category as MessageCategory,
       title: row.title,
       content: row.content,
       actionUrl: row.actionUrl,
@@ -240,11 +227,8 @@ export async function markMessageRead(userId: string, messageId: string): Promis
   return true;
 }
 
-export async function markAllMessagesRead(userId: string, category?: MessageCategory | 'all'): Promise<number> {
+export async function markAllMessagesRead(userId: string): Promise<number> {
   const conditions = [eq(userMessages.userId, userId), eq(userMessages.isRead, false), isNull(userMessages.deletedAt)];
-  if (category && category !== 'all') {
-    conditions.push(eq(userMessages.category, category));
-  }
 
   const before = await db
     .select({ total: count() })

@@ -3,7 +3,7 @@
  * Handles membership status, permissions, usage tracking, code redemption.
  */
 
-import { eq, and, gte, sql, count, inArray } from 'drizzle-orm';
+import { eq, and, gte, lt, sql, count, inArray } from 'drizzle-orm';
 import { db } from '@/lib/db';
 import { users, subscriptions, subscriptionCodes, usageLogs, shareRewards } from '@/lib/db/schema';
 
@@ -156,6 +156,7 @@ export async function getSubscriptionStatus(userId: string): Promise<Subscriptio
   if (userRows.length === 0) return null;
 
   const user = userRows[0];
+  const now = new Date();
   const effectiveType = resolveType(user);
 
   // If user has degraded, update DB silently
@@ -163,20 +164,29 @@ export async function getSubscriptionStatus(userId: string): Promise<Subscriptio
     await db.update(users).set({ subscriptionType: 'free', subscriptionExpiresAt: null }).where(eq(users.id, userId));
   }
 
-  // Find latest active subscription record
-  const subRows = await db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active')))
-    .orderBy(sql`${subscriptions.expiresAt} DESC`)
-    .limit(1);
+  await db
+    .update(subscriptions)
+    .set({ status: 'expired' })
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'), lt(subscriptions.expiresAt, now)));
+
+  // Find latest active subscription record only for users who are effectively paid.
+  // This prevents stale subscription rows from making a free user look active.
+  const subRows =
+    effectiveType === 'free'
+      ? []
+      : await db
+          .select()
+          .from(subscriptions)
+          .where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, 'active'), gte(subscriptions.expiresAt, now)))
+          .orderBy(sql`${subscriptions.expiresAt} DESC`)
+          .limit(1);
 
   const sub = subRows[0] ?? null;
 
   return {
     subscriptionType: effectiveType,
     plan: sub ? (sub.plan as SubscriptionPlan) : null,
-    status: sub ? 'active' : effectiveType !== 'free' ? 'active' : 'none',
+    status: effectiveType === 'free' ? 'none' : 'active',
     expiresAt: user.subscriptionExpiresAt ? user.subscriptionExpiresAt.toISOString().slice(0, 10) : null,
     remainingDays: remainingDays(user.subscriptionExpiresAt),
     permissions: PERMISSIONS[effectiveType],
@@ -328,7 +338,18 @@ export async function consumeUsageWithTransaction(
         .limit(1);
 
       if (existing.length > 0) {
-        const usedToday = await countTodayUsage(userId, feature);
+        const usedRows = await tx
+          .select({ cnt: count() })
+          .from(usageLogs)
+          .where(
+            and(
+              eq(usageLogs.userId, userId),
+              eq(usageLogs.feature, feature),
+              eq(usageLogs.action, USAGE_CONSUME_ACTION),
+              gte(usageLogs.createdAt, start),
+            ),
+          );
+        const usedToday = Number(usedRows[0]?.cnt ?? 0);
         const remaining = limit === -1 ? -1 : Math.max(0, limit - usedToday);
         return {
           feature,
@@ -508,6 +529,22 @@ export async function createSubscription(data: {
   paymentId?: string;
   amount?: number;
 }): Promise<{ success: boolean; subscriptionId?: string; expiresAt?: string; message?: string }> {
+  if (data.paymentId) {
+    const existingRows = await db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.paymentId, data.paymentId))
+      .limit(1);
+    const existing = existingRows[0];
+    if (existing) {
+      return {
+        success: true,
+        subscriptionId: existing.id,
+        expiresAt: existing.expiresAt.toISOString().slice(0, 10),
+      };
+    }
+  }
+
   const days = PLAN_DAYS[data.plan] ?? 30;
   const newType: SubscriptionType = data.plan === 'yearly' ? 'vip' : 'sub';
 

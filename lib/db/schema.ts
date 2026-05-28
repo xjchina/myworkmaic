@@ -105,6 +105,33 @@ export const subscriptions = mysqlTable('subscriptions', {
 }));
 
 /**
+ * WeChat payment orders table - tracks real payment lifecycle before granting membership.
+ */
+export const wechatPaymentOrders = mysqlTable('wechat_payment_orders', {
+  id: varchar('id', { length: 36 }).primaryKey(),
+  outTradeNo: varchar('out_trade_no', { length: 32 }).notNull(),
+  userId: varchar('user_id', { length: 36 }).notNull(),
+  plan: varchar('plan', { length: 20 }).notNull(), // monthly | yearly
+  channel: varchar('channel', { length: 16 }).notNull().default('native'), // native | jsapi
+  amount: int('amount').notNull(), // cents
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // pending | paid | closed | failed
+  description: varchar('description', { length: 127 }).notNull(),
+  codeUrl: text('code_url'),
+  prepayId: varchar('prepay_id', { length: 128 }),
+  transactionId: varchar('transaction_id', { length: 64 }),
+  payerOpenId: varchar('payer_open_id', { length: 128 }),
+  notifyJson: text('notify_json'),
+  paidAt: timestamp('paid_at'),
+  expiresAt: timestamp('expires_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => ({
+  outTradeNoIdx: uniqueIndex('wechat_payment_orders_out_trade_no_unique').on(table.outTradeNo),
+  userCreatedIdx: index('wechat_payment_orders_user_created_idx').on(table.userId, table.createdAt),
+  statusIdx: index('wechat_payment_orders_status_idx').on(table.status),
+}));
+
+/**
  * Subscription codes table — pre-generated redemption codes
  */
 export const subscriptionCodes = mysqlTable('subscription_codes', {

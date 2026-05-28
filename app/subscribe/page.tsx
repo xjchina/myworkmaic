@@ -15,6 +15,7 @@ import {
   ArrowRight,
   Loader2,
   ChevronRight,
+  X,
 } from 'lucide-react';
 import styles from './subscribe.module.css';
 
@@ -22,6 +23,18 @@ const PLAN_ORDER: SubscriptionType[] = ['free', 'sub', 'vip'];
 const PLAN_FEATURE_KEYS = (Object.keys(PERMISSION_LABELS) as Array<keyof typeof PERMISSION_LABELS>).filter(
   (key) => key !== 'knowledgeSteps',
 );
+
+interface WechatPaymentOrder {
+  outTradeNo: string;
+  plan: 'monthly' | 'yearly';
+  channel: 'native' | 'jsapi';
+  amount: number;
+  amountYuan: number;
+  description: string;
+  expiresAt: string;
+  codeUrl: string | null;
+  qrCodeUrl: string | null;
+}
 
 function PlanCard({
   plan,
@@ -229,12 +242,67 @@ function InviteSharePanel() {
   );
 }
 
+function WechatPayModal({
+  order,
+  checking,
+  onClose,
+}: {
+  order: WechatPaymentOrder;
+  checking: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div className={styles.payOverlay} role="dialog" aria-modal="true">
+      <div className={styles.payModal}>
+        <button className={styles.payCloseButton} type="button" onClick={onClose} aria-label="关闭支付弹窗">
+          <X className="size-5" />
+        </button>
+
+        <div className={styles.payHeader}>
+          <div className={styles.payLogo}>微</div>
+          <div>
+            <h3 className={styles.payTitle}>微信扫码支付</h3>
+            <p className={styles.payDesc}>请使用微信扫一扫完成支付，支付成功后会自动开通会员。</p>
+          </div>
+        </div>
+
+        <div className={styles.payBody}>
+          <div className={styles.payQrBox}>
+            {order.qrCodeUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img className={styles.payQrImage} src={order.qrCodeUrl} alt="微信支付二维码" />
+            ) : (
+              <div className={styles.payQrFallback}>二维码生成失败，请重新下单</div>
+            )}
+          </div>
+
+          <div className={styles.payInfo}>
+            <div className={styles.payAmount}>¥{order.amountYuan.toFixed(2)}</div>
+            <div className={styles.payProduct}>{order.description}</div>
+            <div className={styles.payOrderNo}>订单号：{order.outTradeNo}</div>
+            <div className={styles.payHint}>
+              <Loader2 className="size-4 animate-spin" />
+              正在等待微信支付结果...
+            </div>
+          </div>
+        </div>
+
+        <div className={styles.payFooter}>
+          二维码有效期约 30 分钟，请勿重复支付同一订单。
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SubscribePage() {
   const isLoggedIn = useAuthGuard();
   const subscription = useSubscriptionStore((s) => s.subscription);
   const fetchSubscription = useSubscriptionStore((s) => s.fetchSubscription);
   const [showRedeem, setShowRedeem] = useState(false);
   const [upgradingPlan, setUpgradingPlan] = useState<SubscriptionType | null>(null);
+  const [paymentOrder, setPaymentOrder] = useState<WechatPaymentOrder | null>(null);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const subFetchedRef = useRef(false);
 
   useEffect(() => {
@@ -244,38 +312,70 @@ export default function SubscribePage() {
     }
   }, [isLoggedIn, fetchSubscription]);
 
-  if (!isLoggedIn) return null;
-
   const currentType = subscription?.subscriptionType ?? 'free';
+
+  useEffect(() => {
+    if (!paymentOrder) return;
+    let stopped = false;
+
+    const checkPaymentStatus = async () => {
+      if (stopped) return;
+      setCheckingPayment(true);
+      try {
+        const res = await fetch(`/api/wechat/pay/status?outTradeNo=${encodeURIComponent(paymentOrder.outTradeNo)}`);
+        const data = await res.json().catch(() => ({} as { success?: boolean; data?: { status?: string } }));
+        if (res.ok && data.success && data.data?.status === 'paid') {
+          stopped = true;
+          setPaymentOrder(null);
+          await fetchSubscription();
+          toast.success('微信支付成功，会员已开通');
+        }
+      } finally {
+        if (!stopped) setCheckingPayment(false);
+      }
+    };
+
+    void checkPaymentStatus();
+    const timer = window.setInterval(() => void checkPaymentStatus(), 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [fetchSubscription, paymentOrder]);
+
+  if (!isLoggedIn) return null;
 
   const handleUpgrade = async (plan: SubscriptionType) => {
     if (plan === 'free') return;
     if (upgradingPlan) return;
 
     const payPlan = plan === 'vip' ? 'yearly' : 'monthly';
-    const amount = plan === 'vip' ? 199 : 29;
 
     setUpgradingPlan(plan);
     try {
-      const res = await fetch('/api/subscribe/create', {
+      const res = await fetch('/api/wechat/pay/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           plan: payPlan,
-          amount,
-          payment_id: `manual_${Date.now()}`,
+          channel: 'native',
         }),
       });
 
-      const data = await res.json().catch(() => ({} as { success?: boolean; error?: string; message?: string }));
+      const data = await res.json().catch(() => ({} as { success?: boolean; error?: string; message?: string; data?: WechatPaymentOrder }));
       if (!res.ok || !data.success) {
         toast.error(data.message || data.error || '开通失败，请稍后重试');
         return;
       }
 
-      await fetchSubscription();
+      if (!data.data) {
+        toast.error('微信支付订单创建失败，请稍后重试');
+        return;
+      }
+
+      setPaymentOrder(data.data);
       setShowRedeem(false);
-      toast.success(`已成功开通${PLAN_META[plan].label}`);
+      toast.success('微信支付订单已创建，请扫码支付');
     } catch {
       toast.error('网络异常，开通失败，请稍后重试');
     } finally {
@@ -348,6 +448,9 @@ export default function SubscribePage() {
           ))}
         </section>
       </div>
+      {paymentOrder ? (
+        <WechatPayModal order={paymentOrder} checking={checkingPayment} onClose={() => setPaymentOrder(null)} />
+      ) : null}
     </AppShell>
   );
 }

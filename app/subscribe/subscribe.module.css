@@ -504,6 +504,167 @@
   padding-left: 4px;
 }
 
+/* WeChat Pay */
+.payOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(6px);
+}
+
+.payModal {
+  position: relative;
+  width: min(680px, 100%);
+  border: 1px solid #dcfce7;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.24);
+  overflow: hidden;
+}
+
+.payCloseButton {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  color: #64748b;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.payCloseButton:hover {
+  color: #0f172a;
+  border-color: #94a3b8;
+  transform: translateY(-1px);
+}
+
+.payHeader {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 28px 32px 20px;
+  background: linear-gradient(135deg, #f0fdf4, #ecfeff);
+  border-bottom: 1px solid #dcfce7;
+}
+
+.payLogo {
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  box-shadow: 0 10px 24px rgba(34, 197, 94, 0.28);
+}
+
+.payTitle {
+  margin: 0 0 6px;
+  color: #0f172a;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.payDesc {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.payBody {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 26px;
+  padding: 30px 32px;
+  align-items: center;
+}
+
+.payQrBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 260px;
+  border: 1px solid #e2e8f0;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+}
+
+.payQrImage {
+  width: 220px;
+  height: 220px;
+  display: block;
+}
+
+.payQrFallback {
+  max-width: 180px;
+  color: #ef4444;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.7;
+}
+
+.payInfo {
+  min-width: 0;
+}
+
+.payAmount {
+  margin-bottom: 8px;
+  color: #0f172a;
+  font-size: 44px;
+  font-weight: 950;
+  letter-spacing: -1px;
+}
+
+.payProduct {
+  margin-bottom: 10px;
+  color: #334155;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.payOrderNo {
+  margin-bottom: 18px;
+  color: #94a3b8;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.payHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  color: #166534;
+  background: #dcfce7;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.payFooter {
+  padding: 16px 32px 22px;
+  color: #94a3b8;
+  font-size: 12px;
+  text-align: center;
+  border-top: 1px solid #f1f5f9;
+  background: #fbfdff;
+}
+
 /* ─── Responsive ────────────────────────────────────── */
 
 @media (max-width: 1024px) {
@@ -534,6 +695,26 @@
   }
 
   .statusInfo {
+    justify-content: center;
+  }
+
+  .payBody {
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .payHeader {
+    padding: 24px 58px 18px 24px;
+  }
+
+  .payAmount,
+  .payProduct,
+  .payOrderNo {
+    text-align: center;
+  }
+
+  .payHint {
+    width: 100%;
     justify-content: center;
   }
 }
