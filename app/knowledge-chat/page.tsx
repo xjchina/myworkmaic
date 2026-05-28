@@ -28,6 +28,7 @@ type PromptSourceMeta = {
   subject: string;
   gradeSegment: string;
   mode: 'dialog' | 'quick';
+  stepKey?: string;
   version: number;
   status: string;
 };
@@ -747,7 +748,7 @@ function RecallPageContent() {
           <div className="dialog-chat">
             {activePromptSource ? (
               <div className="border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs text-slate-600">
-                {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / v{activePromptSource.version}
+                {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / {activePromptSource.stepKey || 'global'} / v{activePromptSource.version}
               </div>
             ) : null}
             <div className="chat-messages">
@@ -885,7 +886,7 @@ function RecallPageContent() {
 
       {activePromptSource ? (
         <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / v{activePromptSource.version}
+          {'\u5F53\u524D\u751F\u6548\u63D0\u793A\u8BCD\uFF1A'}{activePromptSource.subject} / {activePromptSource.gradeSegment} / {activePromptSource.mode} / {activePromptSource.stepKey || 'global'} / v{activePromptSource.version}
         </div>
       ) : null}
 

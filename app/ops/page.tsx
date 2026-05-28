@@ -13,6 +13,7 @@ type PromptItem = {
   subject: string;
   gradeSegment: string;
   mode: 'dialog' | 'quick';
+  stepKey: PromptStepKey;
   version: number;
   status: 'draft' | 'published' | 'archived';
   name: string;
@@ -55,6 +56,8 @@ type PromptDraft = {
   safetyConstraints: string;
   antiDivergenceRules: string;
 };
+
+type PromptStepKey = 'global' | 'step1' | 'step2' | 'step3' | 'step4' | 'step5';
 
 const METRIC_LABELS: Record<string, string> = {
   totalUsers: '累计用户',
@@ -100,6 +103,16 @@ function getFeatureLabel(feature: string): string {
 
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '道法', '通用'];
 const GRADES = ['小学', '初中', '高中', '通用'];
+const PROMPT_STEPS: Array<{ key: PromptStepKey; label: string; desc: string }> = [
+  { key: 'global', label: '全局规则', desc: '控制老师整体人设、语气、安全边界。' },
+  { key: 'step1', label: '第1步 核心概念', desc: '控制核心概念回忆、追问和纠偏。' },
+  { key: 'step2', label: '第2步 易错点与重点', desc: '控制易错点、重点识别和补充。' },
+  { key: 'step3', label: '第3步 公式/定理', desc: '控制公式定理回忆与适用条件。' },
+  { key: 'step4', label: '第4步 典型例题', desc: '控制题型、条件、目标和解题步骤。' },
+  { key: 'step5', label: '第5步 方法总结', desc: '控制方法归纳、复盘和迁移提醒。' },
+];
+const getPromptStepLabel = (key: PromptStepKey | string) =>
+  PROMPT_STEPS.find((item) => item.key === key)?.label || '全局规则';
 const NAV_ITEMS: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: 'overview', label: '数据总览', icon: '01' },
   { key: 'users', label: '用户管理', icon: '02' },
@@ -161,6 +174,7 @@ export default function OpsAdminPage() {
   const [promptSubject, setPromptSubject] = useState('数学');
   const [promptGrade, setPromptGrade] = useState('高中');
   const [promptMode, setPromptMode] = useState<'dialog' | 'quick'>('dialog');
+  const [promptStepKey, setPromptStepKey] = useState<PromptStepKey>('global');
   const [showVersionList, setShowVersionList] = useState(false);
   const [promptDraft, setPromptDraft] = useState<PromptDraft>(emptyPromptDraft);
   const [renderPreview, setRenderPreview] = useState('');
@@ -245,7 +259,12 @@ export default function OpsAdminPage() {
   }, []);
 
   const loadPrompts = useCallback(async () => {
-    const params = new URLSearchParams({ subject: promptSubject, gradeSegment: promptGrade, mode: promptMode });
+    const params = new URLSearchParams({
+      subject: promptSubject,
+      gradeSegment: promptGrade,
+      mode: promptMode,
+      stepKey: promptStepKey,
+    });
     const data = await requestJson<{ items: PromptItem[] }>(`/api/ops/knowledge-prompts?${params.toString()}`);
     const items = data.items || [];
     setPrompts(items);
@@ -253,7 +272,7 @@ export default function OpsAdminPage() {
     if (selectedPromptId && !items.find((i) => i.id === selectedPromptId)) {
       setSelectedPromptId(items[0]?.id || '');
     }
-  }, [promptGrade, promptMode, promptSubject, selectedPromptId]);
+  }, [promptGrade, promptMode, promptStepKey, promptSubject, selectedPromptId]);
 
   const loadUsers = useCallback(async () => {
     const params = new URLSearchParams();
@@ -478,13 +497,13 @@ export default function OpsAdminPage() {
               <div className="rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 to-indigo-50 p-4">
                 <h2 className="text-lg font-semibold text-slate-900">提示词中心</h2>
                 <p className="mt-1 text-sm text-slate-700">
-                  这是给教研老师使用的可视化编辑区，不需要写代码。按下面 3 步走，配置就能生效。
+                  这是给教研老师使用的可视化编辑区，不需要写代码。支持按“全局规则 + 知识宇宙 5 步”分别配置，发布后用户端会按当前步骤自动读取。
                 </p>
                 <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
                   {[
-                    ['第1步', '先选学科、年级、模式，再点“查询版本”或“新建草稿”。'],
-                    ['第2步', '在结构化编辑里填写老师人设、教学风格和输出格式。'],
-                    ['第3步', '先“调试预览”，确认没问题后点“发布”。'],
+                    ['第1步', '先选学科、年级、模式和知识宇宙步骤。'],
+                    ['第2步', '填写该老师在这个步骤里的角色、风格、输出格式和边界。'],
+                    ['第3步', '先“调试预览”，确认没问题后发布，用户端立即按步骤生效。'],
                   ].map(([title, desc]) => (
                     <div key={title} className="rounded-xl border border-blue-200 bg-white/80 p-3">
                       <div className="text-sm font-bold text-blue-700">{title}</div>
@@ -496,7 +515,7 @@ export default function OpsAdminPage() {
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <div className="mb-3 text-sm font-bold text-slate-800">筛选范围</div>
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
                   <label className="space-y-1.5">
                     <span className="text-xs font-semibold text-slate-600">学科</span>
                     <select className={baseInput} value={promptSubject} onChange={(e) => setPromptSubject(e.target.value)}>
@@ -516,6 +535,12 @@ export default function OpsAdminPage() {
                       <option value="quick">快速模式</option>
                     </select>
                   </label>
+                  <label className="space-y-1.5">
+                    <span className="text-xs font-semibold text-slate-600">知识宇宙步骤</span>
+                    <select className={baseInput} value={promptStepKey} onChange={(e) => setPromptStepKey(e.target.value as PromptStepKey)}>
+                      {PROMPT_STEPS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                    </select>
+                  </label>
                   <div className="flex items-end gap-2">
                     <button className={btnGhost} onClick={loadPrompts} type="button">查询版本</button>
                     <button
@@ -524,7 +549,7 @@ export default function OpsAdminPage() {
                         const data = await requestJson<{ item: PromptItem }>('/api/ops/knowledge-prompts', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ subject: promptSubject, gradeSegment: promptGrade, mode: promptMode }),
+                          body: JSON.stringify({ subject: promptSubject, gradeSegment: promptGrade, mode: promptMode, stepKey: promptStepKey }),
                         });
                         await loadPrompts();
                         setSelectedPromptId(data.item.id);
@@ -563,7 +588,7 @@ export default function OpsAdminPage() {
                           )}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="text-sm font-semibold text-slate-900">v{p.version} · {p.name}</div>
+                            <div className="text-sm font-semibold text-slate-900">v{p.version} · {getPromptStepLabel(p.stepKey)} · {p.name}</div>
                             <span className={cn(
                               'rounded-full px-2 py-0.5 text-xs font-semibold',
                               p.status === 'published' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700',
@@ -613,7 +638,10 @@ export default function OpsAdminPage() {
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           当前版本：v{selectedPrompt.version} · {selectedPrompt.name} · 状态：
-                          {selectedPrompt.status === 'published' ? '已发布' : '草稿'}
+                          {selectedPrompt.status === 'published' ? '已发布' : '草稿'} · 生效步骤：{getPromptStepLabel(selectedPrompt.stepKey)}
+                        </p>
+                        <p className="mt-2 rounded-md border border-blue-100 bg-white px-2 py-1 text-xs leading-5 text-slate-600">
+                          当前正在编辑“{getPromptStepLabel(selectedPrompt.stepKey)}”。如果选“全局规则”，它会影响这个学科老师的整体人设；如果选第 1-5 步，它只会在知识宇宙运行到对应步骤时叠加生效。
                         </p>
                         {!canEditSelectedPrompt ? (
                           <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
@@ -679,7 +707,13 @@ export default function OpsAdminPage() {
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                               ...promptDraft,
-                              variables: { subject: promptSubject, chapter: '函数', student_level: promptGrade, mode: promptMode },
+                              variables: {
+                                subject: promptSubject,
+                                chapter: '函数',
+                                student_level: promptGrade,
+                                mode: promptMode,
+                                step: getPromptStepLabel(promptStepKey),
+                              },
                             }),
                           });
                           setRenderPreview(data.rendered?.mergedPrompt || '');

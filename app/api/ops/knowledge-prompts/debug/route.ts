@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       chapter: body.variables?.chapter || '函数',
       student_level: body.variables?.student_level || '高中',
       mode: body.variables?.mode || 'dialog',
+      step: body.variables?.step || 'global',
     },
   );
 

@@ -5,7 +5,10 @@ import { consumeUsageWithTransaction } from '@/lib/server/subscription';
 import { checkCombinedCompliance } from '@/lib/server/content-compliance';
 import { callLLM } from '@/lib/ai/llm';
 import { resolveModelFromRequest } from '@/lib/server/resolve-model';
-import { resolveKnowledgeRecallSystemPrompt } from '@/lib/server/knowledge-prompt-runtime';
+import {
+  knowledgeStepNumberToPromptStepKey,
+  resolveKnowledgeRecallSystemPrompt,
+} from '@/lib/server/knowledge-prompt-runtime';
 
 type RecallSteps = {
   step1?: string;
@@ -178,6 +181,8 @@ export async function POST(request: NextRequest) {
       chapter,
       studentLevel: studentLevel || undefined,
       mode: isDialogMode ? 'dialog' : 'quick',
+      stepKey: isDialogMode ? knowledgeStepNumberToPromptStepKey(currentStep) : 'global',
+      includeAllSteps: !isDialogMode,
     });
 
     if (isDialogMode) {

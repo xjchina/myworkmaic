@@ -4,6 +4,7 @@ import {
   createKnowledgePromptDraft,
   listKnowledgePromptVersions,
   type PromptMode,
+  type PromptStepKey,
 } from '@/lib/server/ops-knowledge-prompts';
 import { isMissingTableError, missingTableHint } from '@/lib/server/ops-db-error';
 
@@ -16,11 +17,13 @@ export async function GET(request: Request) {
     const subject = (url.searchParams.get('subject') || '').trim();
     const gradeSegment = (url.searchParams.get('gradeSegment') || '').trim();
     const mode = (url.searchParams.get('mode') || '').trim() as PromptMode | '';
+    const stepKey = (url.searchParams.get('stepKey') || '').trim() as PromptStepKey | '';
 
     const items = await listKnowledgePromptVersions({
       subject: subject || undefined,
       gradeSegment: gradeSegment || undefined,
       mode: mode || undefined,
+      stepKey: stepKey || undefined,
     });
 
     return apiSuccess({ items });
@@ -42,6 +45,7 @@ export async function POST(request: Request) {
       subject?: string;
       gradeSegment?: string;
       mode?: PromptMode;
+      stepKey?: PromptStepKey;
       name?: string;
       systemPrompt?: string;
       teachingStyle?: string;
@@ -65,6 +69,7 @@ export async function POST(request: Request) {
         subject: body.subject,
         gradeSegment: body.gradeSegment,
         mode: body.mode,
+        stepKey: body.stepKey || 'global',
       },
       {
         name: body.name,

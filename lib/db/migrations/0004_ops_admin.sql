@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS `ops_knowledge_prompt_versions` (
   `subject` varchar(32) NOT NULL,
   `grade_segment` varchar(32) NOT NULL,
   `mode` varchar(16) NOT NULL,
+  `step_key` varchar(32) NOT NULL DEFAULT 'global',
   `version` int NOT NULL,
   `status` varchar(16) NOT NULL DEFAULT 'draft',
   `name` varchar(120) NOT NULL,
@@ -19,8 +20,8 @@ CREATE TABLE IF NOT EXISTS `ops_knowledge_prompt_versions` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `ops_kp_dim_version_unique` (`subject`,`grade_segment`,`mode`,`version`),
-  KEY `ops_kp_dim_status_idx` (`subject`,`grade_segment`,`mode`,`status`),
+  UNIQUE KEY `ops_kp_dim_version_unique` (`subject`,`grade_segment`,`mode`,`step_key`,`version`),
+  KEY `ops_kp_dim_status_idx` (`subject`,`grade_segment`,`mode`,`step_key`,`status`),
   KEY `ops_kp_created_at_idx` (`created_at`)
 );
 

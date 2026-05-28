@@ -180,6 +180,7 @@ export const opsKnowledgePromptVersions = mysqlTable('ops_knowledge_prompt_versi
   subject: varchar('subject', { length: 32 }).notNull(), // 语文/数学/英语/物理/化学/生物/历史/地理/道法/通用
   gradeSegment: varchar('grade_segment', { length: 32 }).notNull(), // 小学/初中/高中/通用
   mode: varchar('mode', { length: 16 }).notNull(), // dialog | quick
+  stepKey: varchar('step_key', { length: 32 }).notNull().default('global'),
   version: int('version').notNull(),
   status: varchar('status', { length: 16 }).notNull().default('draft'),
   name: varchar('name', { length: 120 }).notNull(),
@@ -200,9 +201,10 @@ export const opsKnowledgePromptVersions = mysqlTable('ops_knowledge_prompt_versi
     table.subject,
     table.gradeSegment,
     table.mode,
+    table.stepKey,
     table.version,
   ),
-  dimStatusIdx: index('ops_kp_dim_status_idx').on(table.subject, table.gradeSegment, table.mode, table.status),
+  dimStatusIdx: index('ops_kp_dim_status_idx').on(table.subject, table.gradeSegment, table.mode, table.stepKey, table.status),
   createdAtIdx: index('ops_kp_created_at_idx').on(table.createdAt),
 }));
 
