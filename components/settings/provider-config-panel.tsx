@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useId } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,6 +67,7 @@ export function ProviderConfigPanel({
   isBuiltIn,
 }: ProviderConfigPanelProps) {
   const { t } = useI18n();
+  const apiKeyInputId = useId();
 
   // Local state for this provider
   const [apiKey, setApiKey] = useState(initialApiKey);
@@ -105,6 +106,17 @@ export function ProviderConfigPanel({
   const handleRequiresApiKeyChange = (requires: boolean) => {
     setRequiresApiKey(requires);
     onConfigChange(apiKey, baseUrl, requires);
+  };
+
+  const handlePersist = () => {
+    onConfigChange(apiKey, baseUrl, requiresApiKey);
+    onSave();
+  };
+
+  const handleClearApiKey = () => {
+    setApiKey('');
+    onConfigChange('', baseUrl, requiresApiKey);
+    onSave();
   };
 
   const handleTestApi = useCallback(async () => {
@@ -161,16 +173,17 @@ export function ProviderConfigPanel({
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Input
-              name={`llm-api-key-${provider.id}`}
+              id={apiKeyInputId}
+              name={`provider-secret-${provider.id}`}
               type={showApiKey ? 'text' : 'password'}
-              autoComplete="new-password"
+              autoComplete="off"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               placeholder="sk-..."
               value={apiKey}
               onChange={(e) => handleApiKeyChange(e.target.value)}
-              onBlur={onSave}
+              onBlur={handlePersist}
               disabled={!requiresApiKey}
               className="h-8 pr-8"
             />
@@ -183,6 +196,15 @@ export function ProviderConfigPanel({
               {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={handleClearApiKey}
+            disabled={!requiresApiKey || !apiKey}
+          >
+            清空密钥
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -248,7 +270,7 @@ export function ProviderConfigPanel({
           placeholder={provider.defaultBaseUrl || 'https://api.example.com/v1'}
           value={baseUrl}
           onChange={(e) => handleBaseUrlChange(e.target.value)}
-          onBlur={onSave}
+          onBlur={handlePersist}
           className="h-8"
         />
         {provider.alternateBaseUrls && provider.alternateBaseUrls.length > 0 && (
@@ -261,6 +283,7 @@ export function ProviderConfigPanel({
                   type="button"
                   onClick={() => {
                     handleBaseUrlChange(alt.url);
+                    onConfigChange(apiKey, alt.url, requiresApiKey);
                     onSave();
                   }}
                   className={cn(

@@ -65,8 +65,10 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Message and agent are required');
     }
 
-    // Get model config from request headers/body
-    const { model, thinkingConfig } = await resolveModelFromRequest(req, body);
+    // User-facing roundtable can require explicit OpenMAIC client config.
+    const { model, thinkingConfig } = await resolveModelFromRequest(req, body, {
+      allowServerFallback: req.headers.get('x-require-client-model') !== '1',
+    });
 
     // Build context for the agent, differentiating question vs judge
     let issueContext = '';

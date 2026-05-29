@@ -106,9 +106,9 @@ export async function POST(request: NextRequest) {
       dialogueHistory?: DialogueMessage[];
     };
 
-    // 优先使用前端传入的模型配置；若未传入可用 key，则允许读取服务端已配置同 provider 的 key。
+    // 默认兼容服务端模型兜底；用户端显式要求时必须使用 OpenMAIC 本地配置。
     const { model, thinkingConfig } = await resolveModelFromRequest(request, body, {
-      allowServerFallback: true,
+      allowServerFallback: request.headers.get('x-require-client-model') !== '1',
     });
 
     const chapter = asString(body.chapter).trim();

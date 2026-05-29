@@ -8,7 +8,7 @@ import { useAuthGuard } from '@/lib/hooks/use-auth-guard';
 import { useUpgradeGuard } from '@/lib/hooks/use-upgrade-guard';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { extractKeywordsFromText, upsertKnowledgeTreeNode } from '@/lib/knowledge/tree-persistence';
-import { getCurrentModelConfig } from '@/lib/utils/model-config';
+import { ensureClientLanguageModelReady, getCurrentModelConfig } from '@/lib/utils/model-config';
 
 // ─── Types ──────────────────────────────────────────────────
 type StepField =
@@ -481,6 +481,7 @@ function RecallPageContent() {
       'x-api-key': modelConfig.apiKey || '',
       'x-base-url': modelConfig.baseUrl || '',
       'x-provider-type': modelConfig.providerType || '',
+      'x-require-client-model': '1',
     };
     return headers;
   }, []);
@@ -509,6 +510,10 @@ function RecallPageContent() {
   const handleStart = useCallback(async (selectedMode: Mode) => {
     if (!chapter.trim()) return;
     if (!(await checkAndUpgrade('knowledge'))) return;
+    if (!(await ensureClientLanguageModelReady())) {
+      alert('请先在教案课堂内置 OpenMAIC 的模型设置中配置语言模型和 API Key。');
+      return;
+    }
 
     await trackUsage({
       feature: 'knowledge',
@@ -566,6 +571,9 @@ function RecallPageContent() {
     setDialogLoading(true);
 
     try {
+      if (!(await ensureClientLanguageModelReady())) {
+        throw new Error('请先在教案课堂内置 OpenMAIC 的模型设置中配置语言模型和 API Key。');
+      }
       const dialogueHistory = [
         ...updated.map((m) => ({ role: m.role, content: m.content })),
       ];
@@ -624,6 +632,9 @@ function RecallPageContent() {
     setFormError(null);
     setFormResult(null);
     try {
+      if (!(await ensureClientLanguageModelReady())) {
+        throw new Error('请先在教案课堂内置 OpenMAIC 的模型设置中配置语言模型和 API Key。');
+      }
       const res = await fetch('/api/knowledge/recall', {
         method: 'POST',
         headers: getModelHeaders(),

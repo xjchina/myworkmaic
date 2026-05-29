@@ -26,6 +26,8 @@ services:
         condition: service_healthy
     env_file:
       - .env.local
+    volumes:
+      - ./secrets/wechatpay:/run/secrets/wechatpay:ro
     restart: unless-stopped
 
 volumes:

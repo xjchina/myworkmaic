@@ -243,6 +243,25 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
     useState<ImageProviderId>(imageProviderId);
   const [selectedVideoProviderId, setSelectedVideoProviderId] =
     useState<VideoProviderId>(videoProviderId);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    const currentProviderExists = !!providerId && !!providersConfig[providerId];
+    const selectedProviderExists = !!selectedProviderId && !!providersConfig[selectedProviderId];
+
+    if ((justOpened || !selectedProviderExists) && currentProviderExists) {
+      const id = window.setTimeout(() => setSelectedProviderId(providerId), 0);
+      return () => window.clearTimeout(id);
+    }
+  }, [open, providerId, providersConfig, selectedProviderId]);
+
   // Navigate to initialSection when dialog opens
   useEffect(() => {
     if (open && initialSection) {

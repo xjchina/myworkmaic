@@ -15,7 +15,7 @@ import { AvatarDisplay } from '@/components/ui/avatar-display';
 import { SpeechButton } from '@/components/audio/speech-button';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
-import { getCurrentModelConfig } from '@/lib/utils/model-config';
+import { ensureClientLanguageModelReady, getCurrentModelConfig } from '@/lib/utils/model-config';
 import { cn } from '@/lib/utils';
 import { trackUsage } from '@/lib/client/usage-tracker';
 import { useSubscriptionStore } from '@/lib/store/subscription';
@@ -47,25 +47,6 @@ interface DebateSession {
 const DEFAULT_TEACHER_AVATAR = '/avatars/teacher.png';
 const DEFAULT_USER_AVATAR = '/avatars/user.png';
 
-function hasConfiguredLanguageModel(): boolean {
-  const { providerId, modelId, providersConfig } = useSettingsStore.getState();
-  if (!providerId || !modelId) return false;
-
-  const provider = providersConfig?.[providerId];
-  if (!provider) return false;
-  if (!provider.models.some((model) => model.id === modelId)) return false;
-
-  const hasEndpoint = !!(
-    provider.baseUrl?.trim() ||
-    provider.defaultBaseUrl?.trim() ||
-    provider.serverBaseUrl?.trim()
-  );
-  if (!hasEndpoint) return false;
-
-  if (!provider.requiresApiKey) return true;
-  return !!(provider.apiKey?.trim() || provider.isServerConfigured);
-}
-
 // 閳光偓閳光偓 API helper 閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓閳光偓
 
 function toPblAgent(agent: AgentConfig): PBLAgent {
@@ -93,6 +74,7 @@ async function askAgent(
     'Content-Type': 'application/json',
     'x-model': modelConfig.modelString,
     'x-api-key': modelConfig.apiKey,
+    'x-require-client-model': '1',
   };
   if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
   if (modelConfig.providerType) headers['x-provider-type'] = modelConfig.providerType;
@@ -522,7 +504,7 @@ export function RoundtableWorkbench() {
     const input = inputValue.trim();
     if (!input || isRunning) return;
 
-    if (!hasConfiguredLanguageModel()) {
+    if (!(await ensureClientLanguageModelReady())) {
       setError('请先设置模型');
       router.push('/classroom?openSettings=providers&reason=model-required');
       return;

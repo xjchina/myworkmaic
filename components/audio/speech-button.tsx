@@ -37,18 +37,39 @@ export function SpeechButton({
     toast.error(error);
   }, []);
 
-  const { isRecording, isProcessing, startRecording, stopRecording } = useAudioRecorder({
+  const {
+    isRecording,
+    isProcessing,
+    audioLevel,
+    inputDevices,
+    selectedInputDeviceId,
+    setSelectedInputDeviceId,
+    refreshInputDevices,
+    startRecording,
+    stopRecording,
+  } = useAudioRecorder({
     onTranscription: stableOnTranscription,
     onError: handleError,
   });
 
   const active = isRecording || isProcessing;
 
-  const handleClick = () => {
+  const handleClick = async () => {
     if (isRecording) {
       stopRecording();
     } else if (!isProcessing) {
+      await refreshInputDevices();
       startRecording();
+    }
+  };
+
+  const handleDeviceChange = (deviceId: string) => {
+    setSelectedInputDeviceId(deviceId);
+    if (isRecording) {
+      stopRecording();
+      window.setTimeout(() => {
+        startRecording();
+      }, 150);
     }
   };
 
@@ -58,22 +79,28 @@ export function SpeechButton({
   const barH = isMd ? 14 : 10;
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled || isProcessing}
-          onClick={handleClick}
-          className={cn(
-            'relative flex items-center justify-center rounded-lg transition-all duration-200 shrink-0 cursor-pointer',
-            sizeClasses,
-            active
-              ? 'bg-violet-500/90 dark:bg-violet-600/80 text-white shadow-[0_0_12px_rgba(139,92,246,0.45)] dark:shadow-[0_0_12px_rgba(139,92,246,0.3)]'
-              : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/80',
-            disabled && 'opacity-40 pointer-events-none',
-            className,
-          )}
-        >
+    <div className="relative shrink-0">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={disabled || isProcessing}
+            onMouseEnter={() => {
+              void refreshInputDevices();
+            }}
+            onClick={() => {
+              void handleClick();
+            }}
+            className={cn(
+              'relative flex items-center justify-center rounded-lg transition-all duration-200 shrink-0 cursor-pointer',
+              sizeClasses,
+              active
+                ? 'bg-violet-500/90 dark:bg-violet-600/80 text-white shadow-[0_0_12px_rgba(139,92,246,0.45)] dark:shadow-[0_0_12px_rgba(139,92,246,0.3)]'
+                : 'text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/80',
+              disabled && 'opacity-40 pointer-events-none',
+              className,
+            )}
+          >
           {/* Breathing ring when recording */}
           {isRecording && (
             <span
@@ -127,15 +154,58 @@ export function SpeechButton({
               }
             }
           `}</style>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-xs">
-        {isProcessing
-          ? t('roundtable.processing')
-          : isRecording
-            ? t('voice.stopListening')
-            : t('voice.startListening')}
-      </TooltipContent>
-    </Tooltip>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {isProcessing
+            ? t('roundtable.processing')
+            : isRecording
+              ? t('voice.stopListening')
+              : t('voice.startListening')}
+        </TooltipContent>
+      </Tooltip>
+
+      {isRecording && (
+        <div
+          className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-border bg-background p-3 text-xs shadow-lg"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="font-medium text-foreground">麦克风输入</span>
+            <span className="text-muted-foreground">{Math.round(audioLevel * 100)}%</span>
+          </div>
+          <div className="mb-3 h-2 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full rounded-full transition-[width] duration-100',
+                audioLevel > 0.08 ? 'bg-emerald-500' : 'bg-amber-400',
+              )}
+              style={{ width: `${Math.max(4, Math.round(audioLevel * 100))}%` }}
+            />
+          </div>
+          <select
+            value={selectedInputDeviceId}
+            onChange={(e) => handleDeviceChange(e.target.value)}
+            className="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs outline-none focus:border-violet-400"
+          >
+            {inputDevices.length === 0 ? (
+              <option value="">系统默认麦克风</option>
+            ) : (
+              inputDevices.map((device, index) => (
+                <option key={device.deviceId || index} value={device.deviceId}>
+                  {device.label || `麦克风 ${index + 1}`}
+                </option>
+              ))
+            )}
+          </select>
+          {audioLevel <= 0.02 && (
+            <p className="mt-2 text-[11px] leading-relaxed text-amber-600">
+              音量没有跳动时，请在这里切换到蓝牙耳机麦克风，或检查系统输入设备。
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
